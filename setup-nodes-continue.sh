@@ -15,57 +15,6 @@ echo -e "${BLUE}    Lightning Network Setup 🚀${NC}"
 echo -e "${BLUE}================================${NC}"
 echo ""
 
-# Step 1: Start bitcoind and LND nodes
-echo -e "${BLUE}Step 1: Starting Bitcoin node and LND nodes${NC}"
-echo "⏱️  This may take a few minutes..."
-
-# Navigate to the Lightning-Simulation directory
-echo "Navigating to Lightning-Simulation directory..."
-if [ -d "Lightning-Simulation/lightning-simulation" ]; then
-    cd Lightning-Simulation/lightning-simulation
-
-    # Clean up any existing containers first
-    echo "Stopping and removing existing containers..."
-    docker-compose down -v
-
-    # Start the bitcoind and LND nodes
-    echo "Starting bitcoind and LND nodes with docker-compose..."
-    docker-compose up -d
-
-    # Check if containers are running
-    echo "Checking if containers started successfully..."
-    CONTAINERS=$(docker ps | grep -E 'bitcoind|lnd' | wc -l)
-    
-    if [ $CONTAINERS -gt 0 ]; then
-        echo -e "${GREEN}✓ Bitcoin and LND nodes started successfully${NC}"
-        echo "Waiting 30 seconds for nodes to initialize..."
-        sleep 30  # Give them time to initialize
-    else
-        echo -e "${RED}✗ Failed to start Bitcoin and LND nodes${NC}"
-        echo "Check docker logs for more information."
-        echo "Returning to the original directory..."
-        cd "$ORIGINAL_DIR"
-        exit 1
-    fi
-
-    # Return to the original directory
-    echo "Returning to the original directory..."
-    cd "$ORIGINAL_DIR"
-else
-    echo -e "${RED}✗ Lightning-Simulation directory not found${NC}"
-    echo "Make sure you're running this script from the project root directory."
-    exit 1
-fi
-
-# Clean up any stale containers
-docker-compose down -v
-
-# Remove potentially corrupted container configuration
-docker system prune -f
-
-# Restart from scratch
-docker-compose up -d
-
 # Check if script is run as root
 if [ "$EUID" -ne 0 ]; then 
     echo "Script must be run with sudo. Elevating privileges..."
@@ -73,126 +22,192 @@ if [ "$EUID" -ne 0 ]; then
     exit $?
 fi
 
-set -e
-
-# Print welcome message with time estimate
-echo "================================"
-echo "    Lightning Network Setup 🚀"
-echo "================================"
-echo ""
-echo "Default wallet password for all nodes: 'password'"
-echo ""
-echo "⏱️  Estimated setup time: 3-5 minutes"
-echo "This process will:"
-echo " • Continue from previous setup"
-echo " • Unlock LND wallets"
-echo " • Establish payment channels"
-echo ""
-echo "Please be patient as the setup progresses..."
-echo ""
-
-# Initialize total progress variables
-TOTAL_STEPS=10
-CURRENT_STEP=2  # Start from step 2 since we already have Bitcoin initialized
-
-# Function to update total progress
-update_total_progress() {
-    local message=$1
-    CURRENT_STEP=$((CURRENT_STEP + 1))
-    local progress=$((CURRENT_STEP * 100 / TOTAL_STEPS))
-    local filled_size=$((progress * 40 / 100))
-    local empty_size=$((40 - filled_size))
-    
-    # Create the progress bar
-    bar="["
-    for ((i=0; i<filled_size; i++)); do
-        bar+="="
-    done
-    
-    if [ $filled_size -lt 40 ]; then
-        bar+=">"
-        for ((i=0; i<empty_size-1; i++)); do
-            bar+=" "
-        done
-    fi
-    
-    bar+="] $progress%"
-    
-    echo -e "\n📊 Overall Progress: $message $bar\n"
-}
-
-# Install expect if not already installed
+# Make sure expect is installed
 if ! command -v expect &> /dev/null; then
-    echo "Installing expect..."
-    DEBIAN_FRONTEND=noninteractive apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y expect
+    echo "Installing expect tool..."
+    apt-get update
+    apt-get install -y expect
 fi
 
-# Function to show progress bar
-show_progress() {
-    local duration=$1
-    local message=$2
-    local elapsed=0
-    local progress=0
-    local bar_size=40
-    
-    while [ $elapsed -lt $duration ]; do
-        # Calculate progress percentage
-        progress=$((elapsed * 100 / duration))
-        filled_size=$((progress * bar_size / 100))
-        empty_size=$((bar_size - filled_size))
-        
-        # Create the progress bar
-        bar="["
-        for ((i=0; i<filled_size; i++)); do
-            bar+="="
-        done
-        
-        if [ $filled_size -lt $bar_size ]; then
-            bar+=">"
-            for ((i=0; i<empty_size-1; i++)); do
-                bar+=" "
-            done
-        fi
-        
-        bar+="] $progress%"
-        
-        # Print the progress bar
-        echo -ne "\r$message $bar"
-        
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    
-    # Complete the progress bar
-    echo -ne "\r$message [========================================] 100%\n"
-}
+# Step 1: Cleanup - Stop existing containers and remove data directories
+echo -e "${BLUE}Step 1: Cleaning up existing environment${NC}"
 
-# Function to restart a node
-restart_node() {
-    local node=$1
-    echo "Restarting $node..."
-    docker restart $node
-    sleep 10
-}
-
-# Function to unlock wallet
-unlock_wallet() {
-    local node=$1
-    echo "Unlocking wallet for $node 🔓"
+# Navigate to the Lightning-Simulation directory
+if [ -d "Lightning-Simulation/lightning-simulation" ]; then
+    cd Lightning-Simulation/lightning-simulation
     
-    # Check if node is running
+    # Stop any running containers
+    echo "Stopping any running containers..."
+    docker-compose down -v
+    
+    # Remove LND data directories to start fresh
+    echo "Removing existing LND data directories..."
+    sudo rm -rf lnd-*-data
+    
+    # Recreate empty directories
+    echo "Creating fresh data directories..."
+    mkdir -p lnd-alice-data lnd-bob-data lnd-carol-data lnd-dave-data lnd-eve-data
+    
+    # Also clean up bitcoind data to start fresh
+    echo "Removing Bitcoin data..."
+    sudo rm -rf bitcoin-data
+    mkdir -p bitcoin-data
+    
+    # Return to original directory
+    cd "$ORIGINAL_DIR"
+else
+    echo -e "${RED}✗ Lightning-Simulation directory not found${NC}"
+    echo "Make sure you're running this script from the project root directory."
+    exit 1
+fi
+
+# Step 2: Start bitcoind only first
+echo -e "${BLUE}Step 2: Starting Bitcoin node${NC}"
+echo "⏱️  This may take a few minutes..."
+
+cd Lightning-Simulation/lightning-simulation
+
+echo "Starting bitcoind..."
+docker-compose up -d bitcoind
+
+# Wait for bitcoind to start
+echo "Waiting for bitcoind to initialize..."
+sleep 20
+
+# Verify bitcoind is running
+if docker ps | grep -q bitcoind; then
+    echo -e "${GREEN}✓ Bitcoin node started successfully${NC}"
+else
+    echo -e "${RED}✗ Failed to start Bitcoin node${NC}"
+    echo "Check docker logs for more information."
+    docker-compose logs bitcoind
+    cd "$ORIGINAL_DIR"
+    exit 1
+fi
+
+# Create a wallet explicitly
+echo "Creating Bitcoin wallet..."
+docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin createwallet default
+
+# Get a Bitcoin address for generating blocks
+echo "Getting Bitcoin address..."
+ADDRESS=$(docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin getnewaddress)
+echo "Using Bitcoin address: $ADDRESS"
+
+# Generate some initial blocks (need at least 101 for funds to be spendable)
+echo "Generating initial coins..."
+docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 101 "$ADDRESS"
+
+# Step 3: Start LND nodes one by one and initialize them
+echo -e "${BLUE}Step 3: Starting and initializing LND nodes${NC}"
+
+# Function to initialize an LND node
+initialize_lnd_node() {
+    local node=$1
+    echo "Initializing $node..."
+    
+    # Start only this node
+    docker-compose up -d $node
+    
+    # Wait for the node to start
+    echo "Waiting for $node to start..."
+    sleep 15
+    
+    # Check if the node is running
     if ! docker ps | grep -q $node; then
-        echo "$node is not running! Attempting to start..."
-        docker start $node
-        sleep 10
+        echo -e "${RED}✗ Failed to start $node${NC}"
+        docker-compose logs $node
+        return 1
     fi
     
-    # Check if we can connect to the node
-    if ! docker exec $node lncli --network=regtest getinfo &>/dev/null; then
-        echo "Unlocking wallet..."
+    # Create a better expect script with longer timeouts and more specific error handling
+    echo "Creating wallet for $node with password 'password'..."
+    cat > /tmp/create_wallet.exp << EOF
+#!/usr/bin/expect -f
+set timeout 120
+spawn docker exec -it $node lncli --network=regtest create
+expect {
+    "Input wallet password: " {
+        send "password\r"
+        exp_continue
+    }
+    "Confirm password: " {
+        send "password\r"
+        exp_continue
+    }
+    "Do you have an existing cipher seed mnemonic" {
+        send "n\r"
+        exp_continue
+    }
+    "Your cipher seed can be used to recover" {
+        send "\r"
+        exp_continue
+    }
+    "Input your passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "lnd successfully initialized" {
+        puts "Wallet created successfully!"
+    }
+    timeout {
+        puts "Timeout occurred during wallet creation"
+        exit 1
+    }
+    eof {
+        puts "EOF received. Wallet may or may not be initialized."
+    }
+}
+EOF
+    
+    chmod +x /tmp/create_wallet.exp
+    
+    # Run the expect script with a longer timeout
+    timeout 120 /tmp/create_wallet.exp
+    EXPECT_RESULT=$?
+    rm /tmp/create_wallet.exp
+    
+    if [ $EXPECT_RESULT -ne 0 ]; then
+        echo -e "${RED}✗ Error running wallet creation script${NC}"
+        return 1
+    fi
+    
+    # Wait for wallet initialization
+    echo "Waiting for wallet to be fully initialized..."
+    sleep 10
+    
+    # Verify the node is ready by trying multiple times
+    echo "Verifying $node is operational..."
+    local attempts=0
+    local max_attempts=5
+    
+    while [ $attempts -lt $max_attempts ]; do
+        if docker exec $node lncli --network=regtest getinfo > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ $node initialized successfully${NC}"
+            return 0
+        fi
         
-        # Create an expect script to handle the unlock
+        attempts=$((attempts + 1))
+        echo "Attempt $attempts/$max_attempts - Waiting for $node to be ready..."
+        sleep 5
+    done
+    
+    echo -e "${RED}✗ Failed to initialize $node after multiple attempts${NC}"
+    docker-compose logs $node
+    return 1
+}
+
+# Initialize all LND nodes one by one
+NODES=("lnd-alice" "lnd-bob" "lnd-carol" "lnd-dave" "lnd-eve")
+for node in "${NODES[@]}"; do
+    initialize_lnd_node $node
+    NODE_RESULT=$?
+    
+    if [ $NODE_RESULT -ne 0 ]; then
+        echo "There was an issue initializing $node. Check the logs above."
+        
+        # As a fallback, try unlocking if creation failed
+        echo "Attempting to unlock the wallet as a fallback..."
         cat > /tmp/unlock_wallet.exp << EOF
 #!/usr/bin/expect -f
 set timeout 60
@@ -201,140 +216,73 @@ expect "Input wallet password: "
 send "password\r"
 expect eof
 EOF
-        
-        # Make the script executable
         chmod +x /tmp/unlock_wallet.exp
-        
-        # Run the expect script
-        /tmp/unlock_wallet.exp
-        
-        # Clean up
+        timeout 30 /tmp/unlock_wallet.exp
         rm /tmp/unlock_wallet.exp
         
-        echo "[========================================] 100%"
-        echo "Wallet unlocked for $node ✅"
-        echo "--------------------------------"
-        
-        # Wait for wallet to fully initialize
-        show_progress 5 "Initializing wallet..."
-    else
-        echo "Wallet already unlocked for $node ✅"
-    fi
-}
-
-# Function to verify a node is ready
-verify_node_ready() {
-    local node=$1
-    echo "Verifying $node is ready..."
-    
-    local attempt=1
-    local max_attempts=30
-    
-    while [ $attempt -le $max_attempts ]; do
-        if docker exec $node lncli --network=regtest getinfo &>/dev/null; then
-            echo "$node is ready! ✅"
-            return 0
+        if ! docker exec $node lncli --network=regtest getinfo > /dev/null 2>&1; then
+            echo "Failed to initialize or unlock $node. Exiting."
+            cd "$ORIGINAL_DIR"
+            exit 1
         fi
-        
-        echo -ne "\rWaiting for $node to be ready... (Attempt $attempt/$max_attempts) "
-        sleep 5
-        attempt=$((attempt + 1))
-    done
+    fi
     
-    echo "$node failed to initialize properly ❌"
-    echo "Checking logs for $node:"
-    docker logs $node | tail -n 30
-    return 1
-}
+    sleep 5
+done
 
-# Create a channel between two nodes
+# Step 4: Fund the nodes
+echo -e "${BLUE}Step 4: Funding the LND nodes${NC}"
+
+# Generate more blocks to ensure wallet is fully synced
+echo "Generating more blocks..."
+docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 10 "$ADDRESS"
+
+# Fund each node
+for node in "${NODES[@]}"; do
+    echo "Creating new address for $node..."
+    NODE_ADDRESS=$(docker exec $node lncli --network=regtest newaddress p2wkh | jq -r .address)
+    
+    echo "Sending 10 BTC to $node at $NODE_ADDRESS..."
+    docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin sendtoaddress "$NODE_ADDRESS" 10
+done
+
+# Generate blocks to confirm transactions
+echo "Confirming transactions..."
+docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 6 "$ADDRESS"
+
+# Wait for funds to be recognized
+echo "Waiting for funds to be processed..."
+sleep 20
+
+# Step 5: Create channels between nodes
+echo -e "${BLUE}Step 5: Creating channels between nodes${NC}"
+
+# Function to create a channel
 create_channel() {
     local from=$1
     local to=$2
     local amount=$3
-    echo "Opening channel from $from to $to with amount $amount 🔗"
+    echo "Creating channel from $from to $to with amount $amount..."
     
-    # Get pubkeys
-    local to_pubkey=$(docker exec $to lncli --network=regtest getinfo | jq -r .identity_pubkey)
+    # Get the public key of the destination node
+    TO_PUBKEY=$(docker exec $to lncli --network=regtest getinfo | jq -r .identity_pubkey)
     
+    # Get the address of the destination node
     echo "Connecting $from to $to..."
-    # Connect nodes
-    docker exec $from lncli --network=regtest connect $to_pubkey@$to:9735 || echo "Nodes may already be connected"
+    docker exec $from lncli --network=regtest connect $TO_PUBKEY@$to:9735 || echo "Nodes already connected"
     
-    echo "Opening channel..."
     # Open channel
-    docker exec $from lncli --network=regtest openchannel $to_pubkey $amount || echo "Channel may already exist"
+    echo "Opening channel..."
+    docker exec $from lncli --network=regtest openchannel --node_key=$TO_PUBKEY --local_amt=$amount --push_amt=0
     
-    # Generate a block to start confirming
-    docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 1 "$ADDRESS"
+    # Generate a block to start confirming the channel
+    docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 3 "$ADDRESS"
     
-    echo "Channel opening initiated! ✅"
+    # Wait for channel to be recognized
+    sleep 10
 }
 
-echo "Checking if bitcoind is running... 🔍"
-docker logs bitcoind | tail -n 20
-
-update_total_progress "Continuing setup"
-
-# Verify bitcoind is running
-echo "Verifying bitcoind is running... ⏳"
-if docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin getblockchaininfo > /dev/null 2>&1; then
-    echo "Successfully connected to bitcoind! ✅"
-else
-    echo "Error: bitcoind is not running or not responding ❌"
-    exit 1
-fi
-
-# Check if wallet is already loaded
-echo "Checking Bitcoin wallet status... 💰"
-if ! docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin getwalletinfo > /dev/null 2>&1; then
-    echo "Wallet not loaded. Attempting to load 'regtest_wallet'..."
-    docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin loadwallet "regtest_wallet" || docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin createwallet "regtest_wallet"
-else
-    echo "Wallet is already loaded and ready ✅"
-fi
-
-# Get a Bitcoin address for generating blocks
-ADDRESS=$(docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin getnewaddress)
-echo "Using Bitcoin address: $ADDRESS"
-
-# Generate more coins to ensure we have enough funds
-echo "Generating additional coins for funding..."
-docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 100 $ADDRESS
-
-update_total_progress "Setting up LND nodes"
-
-# Setup all nodes
-NODES=("lnd-alice" "lnd-bob" "lnd-carol" "lnd-dave" "lnd-eve")
-echo "Setting up LND nodes... ⚡"
-for node in "${NODES[@]}"; do
-    unlock_wallet "$node"
-    verify_node_ready "$node"
-    update_total_progress "Setting up $node"
-done
-
-# Fund nodes
-echo "Funding nodes... 💸"
-for node in "${NODES[@]}"; do
-    echo "Funding $node..."
-    ADDRESS=$(docker exec $node lncli --network=regtest newaddress p2wkh | jq -r .address)
-    docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin sendtoaddress "$ADDRESS" 5
-done
-
-update_total_progress "Funding nodes"
-
-# Generate blocks to confirm funding
-echo "Confirming funding transactions... 🔄"
-docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 6 "$ADDRESS"
-
-# Wait for nodes to process blocks
-echo "Waiting for nodes to process blocks..."
-show_progress 10 "Processing blocks"
-
-update_total_progress "Creating channels"
-
-# Create channels
-echo "Creating channels... 🌉"
+# Create a network of channels
 create_channel "lnd-alice" "lnd-bob" 1000000
 create_channel "lnd-bob" "lnd-carol" 1000000
 create_channel "lnd-carol" "lnd-dave" 1000000
@@ -343,30 +291,29 @@ create_channel "lnd-eve" "lnd-alice" 1000000
 create_channel "lnd-alice" "lnd-carol" 1000000
 create_channel "lnd-bob" "lnd-eve" 1000000
 
-update_total_progress "Confirming channels"
-
 # Generate blocks to confirm channels
-echo "Confirming channel transactions... 🔄"
+echo "Confirming channels..."
 docker exec bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin generatetoaddress 6 "$ADDRESS"
 
-# Wait for nodes to process blocks
-echo "Waiting for nodes to process blocks..."
-show_progress 10 "Finalizing setup"
+# Wait for channels to be fully established
+echo "Waiting for channels to be established..."
+sleep 30
 
-update_total_progress "Verifying network"
+# Step 6: Verify all nodes and channels
+echo -e "${BLUE}Step 6: Verifying network status${NC}"
 
-# Verify final status
-echo "Verifying final status... 🔍"
+# Check each node
 for node in "${NODES[@]}"; do
     echo "Status for $node:"
-    docker exec $node lncli --network=regtest getinfo | jq '.num_active_channels, .num_peers'
+    docker exec $node lncli --network=regtest getinfo | jq '.alias, .num_active_channels, .num_peers'
     docker exec $node lncli --network=regtest listchannels | jq '.channels | length'
 done
 
-update_total_progress "Setup complete!"
+# Return to the original directory
+cd "$ORIGINAL_DIR"
 
 echo ""
-echo "🎉 Lightning Network setup complete! 🎉"
+echo -e "${GREEN}🎉 Lightning Network setup complete! 🎉${NC}"
 echo "All wallets initialized and channels established!"
 echo "Network is ready for testing and development."
 echo "================================"

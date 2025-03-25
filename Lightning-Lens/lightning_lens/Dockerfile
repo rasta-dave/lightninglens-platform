@@ -9,7 +9,6 @@ COPY src/ /app/src/
 COPY frontend/ /app/frontend/
 COPY configs/ /app/configs/
 COPY scripts/ /app/scripts/
-COPY visualizations/ /app/visualizations/
 COPY setup.py /app/
 COPY README.md /app/
 

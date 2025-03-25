@@ -1,8 +1,10 @@
+# Under Construction
+
 # ⚡ LightningLens Platform ⚡
 
 <img src="./images/lightnings.svg" width="200" alt="Lightning Lens Logo" />
 
-A comprehensive solution for optimizing Lightning Network liquidity through AI analysis.
+A research project for optimizing Lightning Network liquidity through machine learning analysis.
 
 ## Overview
 
@@ -13,11 +15,32 @@ Lightning Lens Platform combines two components:
 
 The platform automatically collects transaction data, analyzes network patterns, and provides intelligent rebalancing suggestions to optimize liquidity distribution across channels.
 
+## LightningLens Dashboard
+
+This project provides real-time monitoring, route optimization, and network visualization to help node operators make data-driven decisions.
+
+### Dashboard Screenshots
+
+#### Network Health Overview
+
+![Network Health Dashboard](images/screenshots/screenshot1.png)
+_The main dashboard provides key network health metrics including active nodes, channels, transaction success rate, and time series analysis of transaction values. Real-time monitoring allows operators to quickly identify network performance trends._
+
+#### Route Recommendations
+
+![Route Recommendations](images/screenshots/screenshot2.png)
+_Machine learning route recommendations suggest optimal payment paths between nodes with calculated amounts. This helps node operators maximize transaction success rates while minimizing fees, improving overall network efficiency._
+
+#### Network Visualization & Transaction Flow
+
+![Network Visualization](images/screenshots/screenshot3.png)
+_Interactive network topology visualization shows node relationships and transaction flows. The transaction flow analysis highlights the most active payment channels, providing insights into network utilization patterns._
+
 ## System Architecture
 
 ```
 ┌───────────────────────────────────────┐      ┌─────────────────────────────────────┐
-│      Lightning Network Simulation      │      │          Lightning Lens AI          │
+│      Lightning Network Simulation      │      │          LightningLens            │
 ├───────────────────────────────────────┤      ├─────────────────────────────────────┤
 │  ┌─────────────┐    ┌─────────────┐   │      │  ┌─────────────┐    ┌─────────────┐ │
 │  │  Lightning  │    │  WebSocket  │   │      │  │  WebSocket  │    │    Model    │ │
@@ -54,12 +77,6 @@ The platform automatically collects transaction data, analyzes network patterns,
 ### Quick Setup (Recommended)
 
 Use the provided setup script to automatically create environments and install dependencies:
-
-Git clone
-
-```bash
-git clone --recurse-submodules https://github.com/rasta-dave/lightning-lens-platform.git
-```
 
 ```bash
 # Make the script executable
@@ -161,6 +178,12 @@ npm run
 
 npm start
 ```
+
+## Todo
+
+- Introduce more nodes into the lightning simulation
+- Create more randomness
+- Introduce more strategies and fail-scenarios for the ML to improve upon
 
 ## Services and Ports
 
