@@ -1,0 +1,30 @@
+# Test configuration for circular topology
+network:
+  type: 'regtest'
+  bitcoin_rpc: 'http://localhost:18443'
+
+# Node connections
+nodes:
+  alice:
+    rpc_server: 'localhost:10001'
+    tls_cert_path: '~/.polar/networks/1/volumes/lnd/alice/tls.cert'
+    macaroon_path: '~/.polar/networks/1/volumes/lnd/alice/data/chain/bitcoin/regtest/admin.macaroon'
+    peers: ['carol']
+
+  bob:
+    rpc_server: 'localhost:10002'
+    tls_cert_path: '~/.polar/networks/1/volumes/lnd/bob/tls.cert'
+    macaroon_path: '~/.polar/networks/1/volumes/lnd/bob/data/chain/bitcoin/regtest/admin.macaroon'
+    peers: ['alice']
+
+  carol:
+    rpc_server: 'localhost:10003'
+    tls_cert_path: '~/.polar/networks/1/volumes/lnd/carol/tls.cert'
+    macaroon_path: '~/.polar/networks/1/volumes/lnd/carol/data/chain/bitcoin/regtest/admin.macaroon'
+    peers: ['bob']
+
+# Test parameters
+testing:
+  payment_sizes: [1000, 5000, 10000] # olika betalningsstorlekar i sats
+  num_test_payments: 5
+  rebalancing_threshold: 0.7 # 70% obalans trigger

@@ -1,0 +1,10 @@
+lnd-*-data/
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env 

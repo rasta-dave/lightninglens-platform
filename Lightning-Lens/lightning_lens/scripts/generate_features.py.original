@@ -1,0 +1,125 @@
+"""
+Generate Features for LightningLens
+
+This script generates feature files from existing transaction and channel data
+for training the initial model.
+"""
+
+import os
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import glob
+
+def find_latest_file(pattern):
+    """Find the latest file matching the pattern"""
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    return max(files, key=os.path.getctime)
+
+def generate_features():
+    """Generate features from transaction and channel data"""
+    # Find the latest transaction file
+    transactions_file = find_latest_file("data/processed/transactions_*.csv")
+    if not transactions_file:
+        print("No transaction files found.")
+        return False
+    
+    print(f"Using transaction data from: {transactions_file}")
+    
+    # Load transaction data
+    transactions_df = pd.read_csv(transactions_file)
+    
+    # Create a list of all nodes
+    all_nodes = set()
+    for col in ['sender', 'receiver']:
+        all_nodes.update(transactions_df[col].unique())
+    all_nodes = list(all_nodes)
+    
+    # Create channel pairs from transactions
+    channel_pairs = set()
+    for _, row in transactions_df.iterrows():
+        channel_pairs.add((row['sender'], row['receiver']))
+        channel_pairs.add((row['receiver'], row['sender']))  # Add reverse direction
+    
+    # Create synthetic channel data if no channel file exists
+    channels_data = []
+    for node1, node2 in channel_pairs:
+        channel_id = f"{node1}_{node2}"
+        capacity = 1000000  # Default capacity
+        
+        # Calculate a reasonable balance based on transaction patterns
+        sent = transactions_df[(transactions_df['sender'] == node1) & 
+                              (transactions_df['receiver'] == node2)]['amount'].sum()
+        received = transactions_df[(transactions_df['sender'] == node2) & 
+                                  (transactions_df['receiver'] == node1)]['amount'].sum()
+        
+        # Start with 50% balance and adjust based on net flow
+        local_balance = int(capacity * 0.5 + (received - sent))
+        local_balance = max(0, min(capacity, local_balance))  # Ensure within bounds
+        remote_balance = capacity - local_balance
+        balance_ratio = local_balance / capacity
+        
+        channels_data.append({
+            'channel_id': channel_id,
+            'node': node1,
+            'remote_pubkey': node2,
+            'capacity': capacity,
+            'local_balance': local_balance,
+            'remote_balance': remote_balance,
+            'balance_ratio': balance_ratio
+        })
+    
+    channels_df = pd.DataFrame(channels_data)
+    
+    # Generate features
+    features = []
+    for _, channel in channels_df.iterrows():
+        # Count transactions through this channel
+        channel_txs = transactions_df[
+            ((transactions_df['sender'] == channel['node']) & 
+             (transactions_df['receiver'] == channel['remote_pubkey'])) |
+            ((transactions_df['sender'] == channel['remote_pubkey']) & 
+             (transactions_df['receiver'] == channel['node']))
+        ]
+        
+        tx_count = len(channel_txs)
+        success_rate = channel_txs['success'].mean() if tx_count > 0 else 1.0
+        avg_amount = channel_txs['amount'].mean() if tx_count > 0 else 0
+        
+        # Calculate features
+        features.append({
+            'channel_id': channel['channel_id'],
+            'capacity': channel['capacity'],
+            'local_balance': channel['local_balance'],
+            'remote_balance': channel['remote_balance'],
+            'balance_ratio': channel['balance_ratio'],
+            'tx_count': tx_count,
+            'success_rate': success_rate,
+            'avg_amount': avg_amount,
+            'optimal_ratio': 0.5  # Start with 0.5 as target, model will learn better values
+        })
+    
+    # Create features DataFrame
+    features_df = pd.DataFrame(features)
+    
+    # Save features
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    features_file = f"data/processed/features_{timestamp}.csv"
+    features_df.to_csv(features_file, index=False)
+    
+    print(f"Generated features file: {features_file}")
+    print(f"Created {len(features_df)} feature records from {len(transactions_df)} transactions")
+    
+    return True
+
+if __name__ == "__main__":
+    print("LightningLens Feature Generator")
+    print("===============================")
+    
+    if generate_features():
+        print("\nFeatures generated successfully. You can now train the initial model:")
+        print("python -m scripts.train_initial_model")
+    else:
+        print("\nFailed to generate features. Please check your data files.")

@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  lightning-simulation:
+    build:
+      context: ./Lightning-Simulation/lightning-simulation
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+    ports:
+      - '8765:8765' # WebSocket port
+    networks:
+      - lightning-network
+    restart: unless-stopped
+
+  lightning-lens:
+    build:
+      context: ./Lightning-Lens/lightning_lens
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+    ports:
+      - '5001:5001' # Flask web interface
+    networks:
+      - lightning-network
+    depends_on:
+      - lightning-simulation
+    restart: unless-stopped
+    command: python scripts/http_server.py
+
+networks:
+  lightning-network:
+    driver: bridge

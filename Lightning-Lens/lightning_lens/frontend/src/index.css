@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: theme('colors.lightning-dark');
+  color: theme('colors.satoshi-white');
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom styles */
+.dashboard-card {
+  @apply bg-node-background rounded-lg shadow-md p-4 border border-opacity-20 border-lightning-blue;
+  box-shadow: 0 4px 6px -1px rgba(61, 142, 247, 0.1),
+    0 2px 4px -1px rgba(61, 142, 247, 0.06);
+}
+
+.dashboard-header {
+  @apply text-lg font-bold mb-2 text-satoshi-white;
+}
+
+.dashboard-value {
+  @apply text-2xl font-bold text-lightning-blue;
+}
+
+.dashboard-subtext {
+  @apply text-sm text-gray-400;
+}
+
+.status-success {
+  @apply text-node-green;
+}
+
+.status-warning {
+  @apply text-channel-yellow;
+}
+
+.status-danger {
+  @apply text-warning-red;
+}
+
+.transaction-card {
+  @apply border-l-4 border-bitcoin-orange p-3 mb-2 bg-node-background rounded shadow-sm hover:shadow-lightning-glow transition-shadow;
+}
+
+/* Lightning-themed UI elements */
+.lightning-gradient-bg {
+  @apply bg-gradient-to-r from-lightning-start to-lightning-end;
+}
+
+.success-gradient-bg {
+  @apply bg-gradient-to-r from-success-start to-success-end;
+}
+
+.channel-gradient-bg {
+  @apply bg-gradient-to-r from-channel-start to-channel-end;
+}
+
+.critical-gradient-bg {
+  @apply bg-gradient-to-r from-critical-start to-critical-end;
+}
+
+.lightning-btn {
+  @apply px-4 py-2 bg-lightning-blue hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 focus:ring-2 focus:ring-lightning-purple focus:ring-opacity-50 focus:outline-none;
+  box-shadow: 0 0 8px rgba(61, 142, 247, 0.4);
+}
+
+.bitcoin-btn {
+  @apply px-4 py-2 bg-bitcoin-orange hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 focus:ring-2 focus:ring-lightning-purple focus:ring-opacity-50 focus:outline-none;
+  box-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
+}
+
+.panel-divider {
+  @apply my-4 border-t border-lightning-blue border-opacity-20;
+}

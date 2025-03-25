@@ -1,0 +1,14 @@
+network:
+  topology:
+    - from: alice
+      to: [bob, carol]
+      capacity: 1000000
+    - from: bob
+      to: [carol, dave]
+      capacity: 2000000
+    - from: carol
+      to: [dave, eve]
+      capacity: 1500000
+    - from: dave
+      to: [eve, alice]
+      capacity: 1000000

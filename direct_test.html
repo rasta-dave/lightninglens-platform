@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Direct WebSocket Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        line-height: 1.5;
+      }
+      #log {
+        height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin: 10px 0;
+        font-family: monospace;
+        background-color: #f8f8f8;
+      }
+      button {
+        margin: 5px;
+        padding: 8px 15px;
+      }
+      .error {
+        color: red;
+      }
+      .success {
+        color: green;
+      }
+      .info {
+        color: blue;
+      }
+      .instructions {
+        background-color: #fffbe6;
+        border: 1px solid #ffe599;
+        padding: 10px;
+        margin-bottom: 15px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Direct WebSocket Test</h1>
+    <p>
+      This is a minimal WebSocket client to test the connection to the
+      suggestions service.
+    </p>
+
+    <div class="instructions">
+      <h3>How to use:</h3>
+      <ol>
+        <li>
+          Make sure the suggestions service is running (script:
+          <code
+            >python -m lightning_lens.scripts.simple_suggestions_ws --port
+            8767</code
+          >)
+        </li>
+        <li>
+          Click <strong>Connect</strong> to establish a WebSocket connection
+        </li>
+        <li>After connecting, you should see a welcome message in the log</li>
+        <li>Use the other buttons to send test messages to the server</li>
+      </ol>
+      <p>
+        <strong>Note:</strong> This test client is designed to maintain the
+        connection and avoid the automatic disconnection issue seen in other
+        clients.
+      </p>
+    </div>
+
+    <div>
+      <button onclick="connect()">Connect</button>
+      <button onclick="disconnect()">Disconnect</button>
+      <button onclick="sendHeartbeat()">Send Heartbeat</button>
+      <button onclick="getSuggestions()">Get Suggestions</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+      // Global WebSocket reference
+      var socket = null;
+
+      // Log a message
+      function log(message, type) {
+        var logElement = document.getElementById('log');
+        var entry = document.createElement('div');
+        entry.className = type || 'info';
+        var time = new Date().toTimeString().split(' ')[0];
+        entry.textContent = '[' + time + '] ' + message;
+        logElement.appendChild(entry);
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      // Connect to the WebSocket server
+      function connect() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          log('Already connected!', 'info');
+          return;
+        }
+
+        try {
+          // Create a new WebSocket connection
+          var wsUrl = 'ws://localhost:8767';
+          log('Connecting to ' + wsUrl + '...', 'info');
+
+          socket = new WebSocket(wsUrl);
+
+          // Connection opened
+          socket.onopen = function (event) {
+            log('Connection established!', 'success');
+          };
+
+          // Listen for messages
+          socket.onmessage = function (event) {
+            try {
+              var data = JSON.parse(event.data);
+              log('Received: ' + JSON.stringify(data, null, 2), 'info');
+            } catch (e) {
+              log('Received: ' + event.data, 'info');
+            }
+          };
+
+          // Connection closed
+          socket.onclose = function (event) {
+            var reason = event.reason ? ' Reason: ' + event.reason : '';
+            log('Connection closed. Code: ' + event.code + reason, 'error');
+            socket = null;
+          };
+
+          // Connection error
+          socket.onerror = function (error) {
+            log('WebSocket error occurred', 'error');
+            console.error(error);
+          };
+        } catch (e) {
+          log('Error: ' + e.message, 'error');
+        }
+      }
+
+      // Disconnect from the server
+      function disconnect() {
+        if (socket) {
+          log('Disconnecting...', 'info');
+          socket.close(1000, 'User initiated disconnect');
+          socket = null;
+        } else {
+          log('Not connected', 'error');
+        }
+      }
+
+      // Send a heartbeat message
+      function sendHeartbeat() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          log('Not connected to server', 'error');
+          return;
+        }
+
+        var message = {
+          type: 'heartbeat',
+          timestamp: new Date().toISOString(),
+          client_id:
+            'direct-test-' + Math.random().toString(36).substring(2, 10),
+        };
+
+        log('Sending heartbeat...', 'info');
+        socket.send(JSON.stringify(message));
+      }
+
+      // Request suggestions
+      function getSuggestions() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          log('Not connected to server', 'error');
+          return;
+        }
+
+        var message = {
+          type: 'get_suggestions',
+          timestamp: new Date().toISOString(),
+        };
+
+        log('Requesting suggestions...', 'info');
+        socket.send(JSON.stringify(message));
+      }
+
+      // Initial log
+      log('WebSocket test initialized. Click "Connect" to start.', 'info');
+    </script>
+  </body>
+</html>

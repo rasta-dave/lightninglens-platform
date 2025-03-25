@@ -1,0 +1,30 @@
+services:
+  lnd-alice:
+    volumes:
+      - ./volumes/alice:/root/.lnd
+    ports:
+      - '10009:10009' # Expose to host
+
+  lnd-bob:
+    volumes:
+      - ./volumes/bob:/root/.lnd
+    ports:
+      - '10010:10009' # Note different host port
+
+  lnd-carol:
+    volumes:
+      - ./volumes/carol:/root/.lnd
+    ports:
+      - '10011:10009'
+
+  lnd-dave:
+    volumes:
+      - ./volumes/dave:/root/.lnd
+    ports:
+      - '10012:10009'
+
+  lnd-eve:
+    volumes:
+      - ./volumes/eve:/root/.lnd
+    ports:
+      - '10013:10009'

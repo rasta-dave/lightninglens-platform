@@ -1,0 +1,8 @@
+websockets>=10.0
+requests>=2.25.0
+flask>=2.0.0
+# asyncio is part of the standard library since Python 3.4
+# datetime is part of the standard library
+# csv is part of the standard library
+# random2 is not needed, use the standard library random module
+json5>=0.9.5 

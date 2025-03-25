@@ -1,0 +1,158 @@
+version: '3'
+
+services:
+  bitcoind:
+    image: ruimarinho/bitcoin-core:latest
+    container_name: bitcoind
+    command:
+      - -regtest=1
+      - -server=1
+      - -rpcuser=bitcoin
+      - -rpcpassword=bitcoin
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -fallbackfee=0.0002
+    ports:
+      - '18443:18443' # RPC
+      - '28332:28332' # ZMQ blocks
+      - '28333:28333' # ZMQ transactions
+    volumes:
+      - ./bitcoin-data:/home/bitcoin/.bitcoin
+    networks:
+      - lightning-network
+
+  lnd-alice:
+    image: lightninglabs/lnd:v0.15.5-beta
+    container_name: lnd-alice
+    depends_on:
+      - bitcoind
+    entrypoint: ['lnd']
+    command:
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoin
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextradomain=lnd-alice
+      - --alias=alice
+    ports:
+      - '10009:10009' # RPC
+    volumes:
+      - ./lnd-alice-data:/root/.lnd
+    networks:
+      - lightning-network
+
+  lnd-bob:
+    image: lightninglabs/lnd:v0.15.5-beta
+    container_name: lnd-bob
+    depends_on:
+      - bitcoind
+    entrypoint: ['lnd']
+    command:
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoin
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextradomain=lnd-bob
+      - --alias=bob
+    ports:
+      - '10010:10009' # RPC
+    volumes:
+      - ./lnd-bob-data:/root/.lnd
+    networks:
+      - lightning-network
+
+  lnd-carol:
+    image: lightninglabs/lnd:v0.15.5-beta
+    container_name: lnd-carol
+    depends_on:
+      - bitcoind
+    entrypoint: ['lnd']
+    command:
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoin
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextradomain=lnd-carol
+      - --alias=carol
+    ports:
+      - '10011:10009' # RPC
+    volumes:
+      - ./lnd-carol-data:/root/.lnd
+    networks:
+      - lightning-network
+
+  lnd-dave:
+    image: lightninglabs/lnd:v0.15.5-beta
+    container_name: lnd-dave
+    depends_on:
+      - bitcoind
+    entrypoint: ['lnd']
+    command:
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoin
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextradomain=lnd-dave
+      - --alias=dave
+    ports:
+      - '10012:10009' # RPC
+    volumes:
+      - ./lnd-dave-data:/root/.lnd
+    networks:
+      - lightning-network
+
+  lnd-eve:
+    image: lightninglabs/lnd:v0.15.5-beta
+    container_name: lnd-eve
+    depends_on:
+      - bitcoind
+    entrypoint: ['lnd']
+    command:
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoin
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextradomain=lnd-eve
+      - --alias=eve
+    ports:
+      - '10013:10009' # RPC
+    volumes:
+      - ./lnd-eve-data:/root/.lnd
+    networks:
+      - lightning-network
+
+networks:
+  lightning-network:
+    driver: bridge

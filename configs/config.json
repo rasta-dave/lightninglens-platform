@@ -1,0 +1,18 @@
+{
+  "ports": {
+    "cors_proxy": 3003,
+    "http_server": 8000,
+    "websocket_server": 8768,
+    "suggestions_service": 8767,
+    "frontend": 3000,
+    "health_dashboard": 3030
+  },
+  "urls": {
+    "cors_proxy": "http://localhost:3003",
+    "cors_proxy_ws": "ws://localhost:3003/ws",
+    "suggestions_ws": "ws://localhost:8767",
+    "health_dashboard": "http://localhost:3030"
+  },
+  "environment": "development",
+  "use_integrated_api": true
+}

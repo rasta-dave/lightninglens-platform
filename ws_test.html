@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebSocket Test Page</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .container {
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .log {
+        border: 1px solid #eee;
+        border-radius: 3px;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        background-color: #f9f9f9;
+        margin-bottom: 20px;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      .log-entry.error {
+        color: red;
+      }
+      .log-entry.info {
+        color: blue;
+      }
+      .log-entry.success {
+        color: green;
+      }
+      .log-entry.debug {
+        color: #555;
+        font-size: 11px;
+      }
+      button {
+        padding: 10px 15px;
+        margin-right: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      input,
+      select {
+        padding: 8px;
+        margin-bottom: 10px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .status {
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .status.connected {
+        color: green;
+      }
+      .status.disconnected {
+        color: red;
+      }
+      .options label {
+        display: block;
+        margin-bottom: 5px;
+      }
+      .checkbox-group {
+        margin-bottom: 10px;
+      }
+      textarea {
+        width: 100%;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebSocket Test Client</h1>
+
+    <div class="container">
+      <h2>Connection Settings</h2>
+      <div>
+        <label for="wsUrl">WebSocket URL:</label>
+        <input type="text" id="wsUrl" value="ws://localhost:8767" />
+      </div>
+
+      <div class="checkbox-group">
+        <label
+          ><input type="checkbox" id="debugMode" checked /> Enable debug
+          logging</label
+        >
+      </div>
+
+      <div class="status disconnected" id="connectionStatus">Disconnected</div>
+
+      <div>
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <h2>Actions</h2>
+      <div>
+        <button id="heartbeatBtn" disabled>Send Heartbeat</button>
+        <button id="getSuggestionsBtn" disabled>Get Suggestions</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <h2>Custom Message</h2>
+      <div>
+        <label for="messageType">Message Type:</label>
+        <select id="messageType">
+          <option value="heartbeat">heartbeat</option>
+          <option value="get_suggestions">get_suggestions</option>
+          <option value="custom">custom</option>
+        </select>
+      </div>
+      <div id="customJsonContainer" style="display: none">
+        <label for="customJson">Custom JSON:</label>
+        <textarea id="customJson" rows="4" style="width: 100%">
+{
+  "type": "custom",
+  "data": "test"
+}</textarea
+        >
+      </div>
+      <div>
+        <button id="sendCustomBtn" disabled>Send Message</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <h2>Log</h2>
+      <div class="log" id="logContainer"></div>
+      <button id="clearLogBtn">Clear Log</button>
+    </div>
+
+    <script>
+      // DOM elements
+      const connectBtn = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      const heartbeatBtn = document.getElementById('heartbeatBtn');
+      const getSuggestionsBtn = document.getElementById('getSuggestionsBtn');
+      const sendCustomBtn = document.getElementById('sendCustomBtn');
+      const clearLogBtn = document.getElementById('clearLogBtn');
+      const wsUrlInput = document.getElementById('wsUrl');
+      const connectionStatus = document.getElementById('connectionStatus');
+      const logContainer = document.getElementById('logContainer');
+      const messageTypeSelect = document.getElementById('messageType');
+      const customJsonContainer = document.getElementById(
+        'customJsonContainer'
+      );
+      const customJsonInput = document.getElementById('customJson');
+      const debugModeCheckbox = document.getElementById('debugMode');
+
+      // WebSocket reference
+      let ws = null;
+      let heartbeatInterval = null;
+      let reconnectAttempts = 0;
+      let maxReconnectAttempts = 5;
+      let reconnectDelay = 2000; // Start with 2 seconds
+
+      // Log a message
+      function log(message, type = 'info') {
+        if (type === 'debug' && !debugModeCheckbox.checked) {
+          return; // Skip debug messages if debug mode is off
+        }
+
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+
+        // Also console log for easier debugging
+        if (type === 'error') {
+          console.error(message);
+        } else if (type === 'debug') {
+          console.debug(message);
+        } else {
+          console.log(message);
+        }
+      }
+
+      // Update UI based on connection state
+      function updateUi(connected) {
+        connectBtn.disabled = connected;
+        disconnectBtn.disabled = !connected;
+        heartbeatBtn.disabled = !connected;
+        getSuggestionsBtn.disabled = !connected;
+        sendCustomBtn.disabled = !connected;
+
+        connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+        connectionStatus.className = `status ${
+          connected ? 'connected' : 'disconnected'
+        }`;
+      }
+
+      // Connect to WebSocket
+      function connect() {
+        try {
+          const url = wsUrlInput.value.trim();
+          log(`Connecting to ${url}...`);
+
+          // Close any existing connection first
+          if (ws) {
+            ws.close();
+          }
+
+          // Create new WebSocket
+          ws = new WebSocket(url);
+
+          // Set binary type to blob for better compatibility
+          ws.binaryType = 'blob';
+
+          log(`WebSocket created, readyState: ${ws.readyState}`, 'debug');
+
+          ws.onopen = (event) => {
+            log('Connection established!', 'success');
+            log(`WebSocket readyState: ${ws.readyState}`, 'debug');
+            updateUi(true);
+            reconnectAttempts = 0; // Reset reconnect counter on successful connection
+
+            // Start heartbeat
+            startHeartbeat();
+          };
+
+          ws.onmessage = (event) => {
+            log(`Received raw data: ${typeof event.data}`, 'debug');
+            try {
+              const data = JSON.parse(event.data);
+              log(`Received: ${JSON.stringify(data, null, 2)}`);
+            } catch (e) {
+              log(`Received non-JSON message: ${event.data}`);
+            }
+          };
+
+          ws.onerror = (error) => {
+            log(
+              `WebSocket error: ${error.message || 'Unknown error'}`,
+              'error'
+            );
+            log(`Error details: ${JSON.stringify(error)}`, 'debug');
+          };
+
+          ws.onclose = (event) => {
+            const reason = event.reason ? ` Reason: ${event.reason}` : '';
+            log(`Connection closed with code ${event.code}.${reason}`, 'error');
+            log(`Close details - wasClean: ${event.wasClean}`, 'debug');
+            updateUi(false);
+            stopHeartbeat();
+
+            // Don't attempt to reconnect if this was a user-initiated disconnect
+            if (
+              event.code !== 1000 &&
+              reconnectAttempts < maxReconnectAttempts
+            ) {
+              const delay = reconnectDelay * Math.pow(1.5, reconnectAttempts);
+              reconnectAttempts++;
+              log(
+                `Attempting to reconnect in ${
+                  delay / 1000
+                } seconds... (Attempt ${reconnectAttempts}/${maxReconnectAttempts})`,
+                'info'
+              );
+              setTimeout(connect, delay);
+            }
+          };
+        } catch (error) {
+          log(`Error creating WebSocket: ${error.message}`, 'error');
+          log(error.stack, 'debug');
+        }
+      }
+
+      // Disconnect from WebSocket
+      function disconnect() {
+        if (ws) {
+          log('Closing connection...');
+          reconnectAttempts = maxReconnectAttempts; // Prevent auto-reconnect
+          ws.close(1000, 'User initiated disconnect');
+          stopHeartbeat();
+        }
+      }
+
+      // Send a heartbeat message
+      function sendHeartbeat() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const heartbeat = {
+            type: 'heartbeat',
+            timestamp: new Date().toISOString(),
+            client_id: `web-test-${Math.random()
+              .toString(36)
+              .substring(2, 10)}`,
+          };
+          try {
+            const json = JSON.stringify(heartbeat);
+            log(`Sending heartbeat: ${json}`, 'debug');
+            ws.send(json);
+            log('Sent heartbeat');
+          } catch (error) {
+            log(`Error sending heartbeat: ${error.message}`, 'error');
+          }
+        } else if (ws) {
+          log(
+            `Cannot send heartbeat, WebSocket readyState: ${ws.readyState}`,
+            'error'
+          );
+        }
+      }
+
+      // Start automatic heartbeat
+      function startHeartbeat() {
+        stopHeartbeat(); // Clear any existing interval
+        heartbeatInterval = setInterval(sendHeartbeat, 15000); // Every 15 seconds
+        log('Started automatic heartbeat (every 15s)', 'debug');
+      }
+
+      // Stop automatic heartbeat
+      function stopHeartbeat() {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+          log('Stopped automatic heartbeat', 'debug');
+        }
+      }
+
+      // Send a get_suggestions message
+      function getSuggestions() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const message = {
+            type: 'get_suggestions',
+            timestamp: new Date().toISOString(),
+          };
+          try {
+            ws.send(JSON.stringify(message));
+            log('Requested suggestions');
+          } catch (error) {
+            log(`Error requesting suggestions: ${error.message}`, 'error');
+          }
+        } else {
+          log('Cannot request suggestions: WebSocket not connected', 'error');
+        }
+      }
+
+      // Send a custom message
+      function sendCustomMessage() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            const messageType = messageTypeSelect.value;
+            let message;
+
+            if (messageType === 'custom') {
+              message = JSON.parse(customJsonInput.value);
+            } else if (messageType === 'heartbeat') {
+              message = {
+                type: 'heartbeat',
+                timestamp: new Date().toISOString(),
+                client_id: `web-test-${Math.random()
+                  .toString(36)
+                  .substring(2, 10)}`,
+              };
+            } else if (messageType === 'get_suggestions') {
+              message = {
+                type: 'get_suggestions',
+                timestamp: new Date().toISOString(),
+              };
+            }
+
+            ws.send(JSON.stringify(message));
+            log(`Sent message: ${JSON.stringify(message)}`);
+          } catch (error) {
+            log(`Error sending message: ${error.message}`, 'error');
+          }
+        } else {
+          log('Cannot send message: WebSocket not connected', 'error');
+        }
+      }
+
+      // Clear the log
+      function clearLog() {
+        logContainer.innerHTML = '';
+        log('Log cleared', 'debug');
+      }
+
+      // Event listeners
+      connectBtn.addEventListener('click', connect);
+      disconnectBtn.addEventListener('click', disconnect);
+      heartbeatBtn.addEventListener('click', sendHeartbeat);
+      getSuggestionsBtn.addEventListener('click', getSuggestions);
+      sendCustomBtn.addEventListener('click', sendCustomMessage);
+      clearLogBtn.addEventListener('click', clearLog);
+
+      // Show/hide custom JSON input based on message type
+      messageTypeSelect.addEventListener('change', () => {
+        customJsonContainer.style.display =
+          messageTypeSelect.value === 'custom' ? 'block' : 'none';
+      });
+
+      // Initial UI update
+      updateUi(false);
+
+      // Log WebSocket support
+      log(
+        `Browser WebSocket support: ${
+          typeof WebSocket !== 'undefined' ? 'YES' : 'NO'
+        }`,
+        'debug'
+      );
+      log('WebSocket Test Client initialized', 'success');
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+network:
+  type: 'regtest'
+  bitcoin_rpc: 'http://bitcoind:18443'
+
+nodes:
+  alice:
+    rpc_server: 'localhost:10001'
+    tls_cert_path: '/media/shahazzad/new/KOD/REGTEST-BITCOIN/lightning-docker-testnet/lnd-alice-data/tls.cert'
+    macaroon_path: '/media/shahazzad/new/KOD/REGTEST-BITCOIN/lightning-docker-testnet/lnd-alice-data/data/chain/bitcoin/regtest/admin.macaroon'
+    peers: ['bob']
+
+  bob:
+    rpc_server: 'localhost:10002'
+    tls_cert_path: '/media/shahazzad/new/KOD/REGTEST-BITCOIN/lightning-docker-testnet/lnd-bob-data/tls.cert'
+    macaroon_path: '/media/shahazzad/new/KOD/REGTEST-BITCOIN/lightning-docker-testnet/lnd-bob-data/data/chain/bitcoin/regtest/admin.macaroon'
+    peers: ['alice']

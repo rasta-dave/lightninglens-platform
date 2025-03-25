@@ -1,0 +1,16 @@
+{
+  "name": "lightning-lens-data-server",
+  "version": "1.0.0",
+  "description": "Simple data server for Lightning Lens simulation data",
+  "main": "simple_data_server.js",
+  "scripts": {
+    "start": "node simple_data_server.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "express": "^4.21.2",
+    "ws": "^8.18.1"
+  }
+}
