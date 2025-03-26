@@ -140,7 +140,7 @@ To run the complete system with Lightning Lens:
 # To start the simulation
 start_simulation.sh
 # To start the dashboard
-start-simple-dashboard.sh # ./start-dashboard.sh
+./start-dashboard.sh
 ```
 
 # Starting Processes of the Machine Learning Data Pipeline (Training model and data flow)
@@ -177,7 +177,7 @@ npm run
 
 ---
 
----
+## ./start-dashboard.sh
 
 # Start data processing pipeline
 
