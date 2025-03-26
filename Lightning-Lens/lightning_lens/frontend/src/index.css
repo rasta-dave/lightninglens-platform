@@ -2,15 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bitcoin-orange: #f7931a;
+  --lightning-blue: #3d8ef7;
+  --lightning-purple: #7b3dff;
+  --node-green: #36b37e;
+  --warning-red: #ff4136;
+  --dark-node: #10151f;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: theme('colors.lightning-dark');
-  color: theme('colors.satoshi-white');
+  background-color: var(--dark-node);
+  color: #f8f9fa;
 }
 
 code {
@@ -70,14 +79,67 @@ code {
   @apply bg-gradient-to-r from-critical-start to-critical-end;
 }
 
-.lightning-btn {
-  @apply px-4 py-2 bg-lightning-blue hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 focus:ring-2 focus:ring-lightning-purple focus:ring-opacity-50 focus:outline-none;
-  box-shadow: 0 0 8px rgba(61, 142, 247, 0.4);
+/* Button styles */
+.bitcoin-btn {
+  @apply px-4 py-2 bg-gradient-to-r from-bitcoin-orange to-bitcoin-orange/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-bitcoin-orange/30;
 }
 
-.bitcoin-btn {
-  @apply px-4 py-2 bg-bitcoin-orange hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 focus:ring-2 focus:ring-lightning-purple focus:ring-opacity-50 focus:outline-none;
-  box-shadow: 0 0 8px rgba(247, 147, 26, 0.4);
+.lightning-btn {
+  @apply px-4 py-2 bg-gradient-to-r from-lightning-blue to-lightning-blue/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-lightning-blue/30;
+}
+
+.gradient-btn {
+  @apply px-4 py-2 bg-gradient-to-r from-bitcoin-orange to-lightning-blue hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-bitcoin-orange/30;
+}
+
+.success-btn {
+  @apply px-4 py-2 bg-gradient-to-r from-node-green to-node-green/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-node-green/30;
+}
+
+/* Text gradient styles */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue;
+}
+
+/* Background styles */
+.gradient-bg {
+  @apply bg-gradient-to-r from-bitcoin-orange/10 to-lightning-blue/10;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(16, 21, 31, 0.4);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--lightning-blue);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bitcoin-orange);
+}
+
+/* Transitions */
+.fade-enter {
+  opacity: 0;
+}
+.fade-enter-active {
+  opacity: 1;
+  transition: opacity 200ms;
+}
+.fade-exit {
+  opacity: 1;
+}
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 200ms;
 }
 
 .panel-divider {

@@ -12,6 +12,14 @@ const TransactionFlow = ({ flowData }) => {
   // State to track filtered links
   const [filteredLinkCount, setFilteredLinkCount] = useState(0);
   const [totalLinkCount, setTotalLinkCount] = useState(0);
+  // Add state for visualization mode
+  const [visualizationMode, setVisualizationMode] = useState('sankey'); // 'sankey' or 'tabular'
+
+  // Toggle visualization mode
+  const toggleVisualizationMode = () => {
+    if (visualizationMode === 'sankey') setVisualizationMode('tabular');
+    else setVisualizationMode('sankey');
+  };
 
   // Main render function to be passed to useD3
   const renderFlow = useCallback(
@@ -170,7 +178,29 @@ const TransactionFlow = ({ flowData }) => {
         .attr('offset', '100%')
         .attr('stop-color', '#3D8EF7');
 
-      try {
+      // Calculate circular connection percentage for display
+      const circularConnectionPercentage =
+        flowData.length > 0
+          ? Math.round((skippedLinkCount / flowData.length) * 100)
+          : 0;
+
+      // Choose visualization based on selected mode
+      if (visualizationMode === 'tabular') {
+        renderTabularView();
+      } else {
+        // Default to Sankey diagram
+        try {
+          renderSankeyDiagram();
+        } catch (error) {
+          console.error('Error rendering Sankey diagram:', error);
+          // Fall back to tabular visualization as it's simplest
+          svg.selectAll('*').remove();
+          renderTabularView();
+        }
+      }
+
+      // Function to render Sankey diagram
+      function renderSankeyDiagram() {
         // Create a Sankey generator
         const sankeyGenerator = sankey()
           .nodeWidth(15)
@@ -452,116 +482,6 @@ const TransactionFlow = ({ flowData }) => {
             .attr('fill', 'white')
             .text(`Showing ${links.length} of ${flowData.length} transactions`);
         }
-      } catch (error) {
-        console.error('Error rendering Sankey diagram:', error);
-
-        // Create a more helpful fallback visualization
-        // Clear the svg in case we have partial renders
-        svg.selectAll('*').remove();
-
-        // Add background again
-        svg
-          .append('rect')
-          .attr('width', '100%')
-          .attr('height', '100%')
-          .attr('fill', '#121923')
-          .attr('rx', 8);
-
-        // Better heading
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', 30)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '16px')
-          .attr('fill', 'white')
-          .attr('font-weight', 'bold')
-          .text('Transaction Flow Summary');
-
-        // Information about complexity
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', height / 2 - 40)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '14px')
-          .attr('fill', '#F7931A')
-          .text('Network has complex circular payment patterns');
-
-        // Info circle for main message
-        const infoCircle = svg
-          .append('circle')
-          .attr('cx', width / 2)
-          .attr('cy', height / 2)
-          .attr('r', 70)
-          .attr('fill', 'rgba(61, 142, 247, 0.1)')
-          .attr('stroke', 'rgba(61, 142, 247, 0.3)')
-          .attr('stroke-width', 2);
-
-        // Add transaction count
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', height / 2 - 10)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '24px')
-          .attr('fill', 'white')
-          .attr('font-weight', 'bold')
-          .text(flowData.length);
-
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', height / 2 + 15)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '14px')
-          .attr('fill', 'white')
-          .text('Transactions');
-
-        // Node count
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', height / 2 + 50)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '12px')
-          .attr('fill', '#ccc')
-          .text(`Between ${nodeSet.size} nodes`);
-
-        // Add suggestion for understanding the data
-        svg
-          .append('text')
-          .attr('x', width / 2)
-          .attr('y', height - 50)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '11px')
-          .attr('fill', '#999')
-          .text('Try the Network Graph visualization for an alternative view');
-
-        // Add explanation about circular references
-        const explanationBox = svg
-          .append('g')
-          .attr('transform', `translate(${width / 2 - 150}, ${height - 35})`);
-
-        explanationBox
-          .append('rect')
-          .attr('width', 300)
-          .attr('height', 20)
-          .attr('fill', 'rgba(0, 0, 0, 0.3)')
-          .attr('rx', 3);
-
-        explanationBox
-          .append('text')
-          .attr('x', 150)
-          .attr('y', 13)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '9px')
-          .attr('fill', '#999')
-          .text(
-            `${Math.round(
-              (skippedLinkCount / flowData.length) * 100
-            )}% of connections form circular payment paths`
-          );
       }
 
       // Function to animate a particle along a path
@@ -590,81 +510,262 @@ const TransactionFlow = ({ flowData }) => {
         animate();
       }
 
-      // Add title and legend
-      svg
-        .append('text')
-        .attr('x', width / 2)
-        .attr('y', 20)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '12px')
-        .attr('fill', 'white')
-        .attr('font-weight', 'bold')
-        .text('Transaction Flow Visualization');
+      // Function to render a tabular view
+      function renderTabularView() {
+        // Clear the svg
+        svg.selectAll('*').remove();
 
-      // Create a simple legend
-      const legend = svg
-        .append('g')
-        .attr('class', 'legend')
-        .attr('transform', `translate(20, ${height - 50})`);
+        // Add background
+        svg
+          .append('rect')
+          .attr('width', '100%')
+          .attr('height', '100%')
+          .attr('fill', '#121923')
+          .attr('rx', 8);
 
-      legend
-        .append('rect')
-        .attr('width', 120)
-        .attr('height', 40)
-        .attr('fill', 'rgba(0, 0, 0, 0.4)')
-        .attr('rx', 3);
+        // Add title
+        svg
+          .append('text')
+          .attr('x', width / 2)
+          .attr('y', 30)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '14px')
+          .attr('fill', 'white')
+          .attr('font-weight', 'bold')
+          .text('Transaction Flow Summary');
 
-      legend
-        .append('rect')
-        .attr('x', 10)
-        .attr('y', 10)
-        .attr('width', 15)
-        .attr('height', 10)
-        .attr('fill', '#F7931A')
-        .attr('opacity', 0.7)
-        .attr('rx', 2);
+        // Create a table-like structure
+        const table = svg.append('g').attr('transform', `translate(20, 60)`);
 
-      legend
-        .append('text')
-        .attr('x', 35)
-        .attr('y', 18)
-        .attr('font-size', '8px')
-        .attr('fill', 'white')
-        .text('Node');
+        // Headers
+        table
+          .append('text')
+          .attr('x', 10)
+          .attr('y', 10)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', 'white')
+          .text('Source');
 
-      legend
-        .append('line')
-        .attr('x1', 10)
-        .attr('y1', 30)
-        .attr('x2', 25)
-        .attr('y2', 30)
-        .attr('stroke', 'url(#flow-gradient)')
-        .attr('stroke-width', 3)
-        .attr('opacity', 0.5);
+        table
+          .append('text')
+          .attr('x', 150)
+          .attr('y', 10)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', 'white')
+          .text('Target');
 
-      legend
-        .append('text')
-        .attr('x', 35)
-        .attr('y', 32)
-        .attr('font-size', '8px')
-        .attr('fill', 'white')
-        .text('Transaction Flow');
+        table
+          .append('text')
+          .attr('x', 290)
+          .attr('y', 10)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', 'white')
+          .text('Amount (sats)');
+
+        table
+          .append('text')
+          .attr('x', 430)
+          .attr('y', 10)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', 'white')
+          .text('Transactions');
+
+        // Add separator line
+        table
+          .append('line')
+          .attr('x1', 0)
+          .attr('y1', 20)
+          .attr('x2', width - 40)
+          .attr('y2', 20)
+          .attr('stroke', 'white')
+          .attr('opacity', 0.3);
+
+        // Group transactions by source-target pair
+        const txGroups = {};
+        flowData.forEach((item) => {
+          const key = `${item.source}-${item.target}`;
+          if (!txGroups[key]) {
+            txGroups[key] = {
+              source: item.source,
+              target: item.target,
+              amount: 0,
+              count: 0,
+            };
+          }
+          txGroups[key].amount += item.amount || 0;
+          txGroups[key].count += item.count || 1;
+        });
+
+        // Convert to array and sort by amount
+        const rows = Object.values(txGroups).sort(
+          (a, b) => b.amount - a.amount
+        );
+
+        // Only show top 10 rows
+        const shownRows = rows.slice(0, 10);
+
+        // Add rows
+        shownRows.forEach((row, i) => {
+          const y = 40 + i * 25;
+          const rowGroup = table
+            .append('g')
+            .attr('transform', `translate(0, ${y})`);
+
+          // Alternating row backgrounds
+          if (i % 2 === 0) {
+            rowGroup
+              .append('rect')
+              .attr('x', 0)
+              .attr('y', -12)
+              .attr('width', width - 40)
+              .attr('height', 25)
+              .attr('fill', 'rgba(255, 255, 255, 0.05)')
+              .attr('rx', 3);
+          }
+
+          // Source cell with bitcoin-orange accent
+          rowGroup
+            .append('rect')
+            .attr('x', 5)
+            .attr('y', -10)
+            .attr('width', 3)
+            .attr('height', 20)
+            .attr('fill', '#F7931A')
+            .attr('rx', 1);
+
+          rowGroup
+            .append('text')
+            .attr('x', 15)
+            .attr('y', 3)
+            .attr('font-size', '11px')
+            .attr('fill', 'white')
+            .text(row.source);
+
+          // Target cell with lightning-blue accent
+          rowGroup
+            .append('rect')
+            .attr('x', 145)
+            .attr('y', -10)
+            .attr('width', 3)
+            .attr('height', 20)
+            .attr('fill', '#3D8EF7')
+            .attr('rx', 1);
+
+          rowGroup
+            .append('text')
+            .attr('x', 155)
+            .attr('y', 3)
+            .attr('font-size', '11px')
+            .attr('fill', 'white')
+            .text(row.target);
+
+          // Amount
+          rowGroup
+            .append('text')
+            .attr('x', 295)
+            .attr('y', 3)
+            .attr('font-size', '11px')
+            .attr('fill', '#F7931A')
+            .text(Math.round(row.amount).toLocaleString());
+
+          // Count
+          rowGroup
+            .append('text')
+            .attr('x', 435)
+            .attr('y', 3)
+            .attr('font-size', '11px')
+            .attr('fill', '#3D8EF7')
+            .text(row.count);
+        });
+
+        // Add total
+        const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
+        const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
+
+        const totalY = 40 + shownRows.length * 25 + 20;
+
+        table
+          .append('line')
+          .attr('x1', 0)
+          .attr('y1', totalY - 10)
+          .attr('x2', width - 40)
+          .attr('y2', totalY - 10)
+          .attr('stroke', 'white')
+          .attr('opacity', 0.3);
+
+        table
+          .append('text')
+          .attr('x', 15)
+          .attr('y', totalY + 5)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', 'white')
+          .text('TOTAL');
+
+        table
+          .append('text')
+          .attr('x', 295)
+          .attr('y', totalY + 5)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', '#F7931A')
+          .text(Math.round(totalAmount).toLocaleString());
+
+        table
+          .append('text')
+          .attr('x', 435)
+          .attr('y', totalY + 5)
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .attr('fill', '#3D8EF7')
+          .text(totalCount);
+
+        // Add note if showing partial data
+        if (rows.length > 10) {
+          table
+            .append('text')
+            .attr('x', width / 2)
+            .attr('y', totalY + 30)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '10px')
+            .attr('fill', 'rgba(255, 255, 255, 0.7)')
+            .text(`Showing top 10 of ${rows.length} transaction pairs`);
+        }
+      }
 
       // Clean up function
       return () => {
         // Remove any timers or other resources here
       };
     },
-    [flowData]
+    [flowData, visualizationMode]
   );
+
+  // Add circularConnectionPercentage to component state for use in the JSX
+  const [circularConnectionPercentage, setCircularConnectionPercentage] =
+    useState(0);
 
   // Memoized dependencies
   const dependencies = useMemo(() => {
-    return [flowData, flowData?.length];
-  }, [flowData]);
+    return [flowData, flowData?.length, visualizationMode];
+  }, [flowData, visualizationMode]);
 
   // Use our custom hook for D3 integration
-  const { containerRef } = useD3(renderFlow, dependencies);
+  const { containerRef } = useD3((containerRef, svg) => {
+    const result = renderFlow(containerRef, svg);
+
+    // Calculate and set circular connection percentage
+    if (totalLinkCount > 0) {
+      const percentage = Math.round((filteredLinkCount / totalLinkCount) * 100);
+      setCircularConnectionPercentage(percentage);
+    }
+
+    return result;
+  }, dependencies);
 
   // Handle empty state
   if (!flowData || flowData.length === 0) {
@@ -677,16 +778,27 @@ const TransactionFlow = ({ flowData }) => {
     );
   }
 
-  // Use React to display information about filtered links
-  const filterInfo =
-    filteredLinkCount > 0 ? (
-      <div className='absolute top-2 right-2 bg-dark-blue/30 border border-lightning-blue/30 text-xs px-2 py-1 rounded text-satoshi-white'>
-        <span className='text-lightning-blue'>
-          {Math.round((filteredLinkCount / totalLinkCount) * 100)}%
-        </span>{' '}
-        circular connections filtered
-      </div>
-    ) : null;
+  // Current visualization mode descriptive text
+  const currentModeText = visualizationMode === 'sankey' ? 'Sankey' : 'Table';
+
+  // Use React to display information about filtered links and visualization controls
+  const infoPanel = (
+    <div className='absolute top-2 right-2 flex flex-col items-end gap-2'>
+      {filteredLinkCount > 0 && visualizationMode === 'sankey' && (
+        <div className='bg-dark-blue/30 border border-lightning-blue/30 text-xs px-2 py-1 rounded text-satoshi-white'>
+          <span className='text-lightning-blue'>
+            {circularConnectionPercentage}%
+          </span>{' '}
+          circular connections filtered
+        </div>
+      )}
+      <button
+        onClick={toggleVisualizationMode}
+        className='bg-gradient-to-r from-bitcoin-orange to-lightning-blue text-satoshi-white text-xs px-3 py-1 rounded border border-bitcoin-orange/30 hover:opacity-90 transition-opacity'>
+        View: {currentModeText}
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -695,7 +807,7 @@ const TransactionFlow = ({ flowData }) => {
       style={{ height: '400px' }}
       role='presentation'
       aria-label='Transaction flow visualization'>
-      {filterInfo}
+      {infoPanel}
       {/* SVG will be inserted here by useD3 */}
     </div>
   );

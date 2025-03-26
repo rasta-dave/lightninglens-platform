@@ -32,7 +32,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
 
             {/* Add indicator when user has manually selected a file */}
             {userSelectedFile && (
-              <span className='ml-3 text-xs px-2 py-1 bg-yellow-600 text-white rounded-full'>
+              <span className='ml-3 text-xs px-2 py-1 bg-bitcoin-orange/80 text-satoshi-white rounded-full'>
                 Manual Selection
               </span>
             )}
@@ -51,7 +51,9 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
         </div>
 
         <div className='flex space-x-2 mt-2 sm:mt-0'>
-          <button onClick={resetSimulation} className='bitcoin-btn'>
+          <button
+            onClick={resetSimulation}
+            className='px-4 py-2 bg-gradient-to-r from-bitcoin-orange to-bitcoin-orange/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-bitcoin-orange/30'>
             <span className='flex items-center'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -70,7 +72,9 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
             </span>
           </button>
 
-          <button onClick={toggleSimulationList} className='lightning-btn'>
+          <button
+            onClick={toggleSimulationList}
+            className='px-4 py-2 bg-gradient-to-r from-lightning-blue to-lightning-blue/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-lightning-blue/30'>
             <span className='flex items-center'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -93,7 +97,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
 
           <button
             onClick={viewLatestSimulation}
-            className='px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none'>
+            className='px-4 py-2 bg-gradient-to-r from-node-green to-node-green/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-node-green/30'>
             <span className='flex items-center'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -116,9 +120,9 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
             onClick={() => setShowPredictionsTab(!showPredictionsTab)}
             className={`px-4 py-2 ${
               showPredictionsTab
-                ? 'bg-lightning-purple'
-                : 'bg-gradient-to-r from-lightning-start to-lightning-end'
-            } hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none`}>
+                ? 'bg-gradient-to-r from-bitcoin-orange to-lightning-blue border-lightning-blue/30'
+                : 'bg-gradient-to-r from-lightning-blue to-bitcoin-orange border-bitcoin-orange/30'
+            } hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border`}>
             <span className='flex items-center'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -142,7 +146,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
       {/* Simulation List Dropdown */}
       {showSimulationList && (
         <div className='mt-4 border border-lightning-blue border-opacity-20 rounded-lg p-2 max-h-60 overflow-y-auto bg-dark-node'>
-          <h3 className='font-semibold text-lg mb-2 text-lightning-blue'>
+          <h3 className='font-semibold text-lg mb-2 text-bitcoin-orange'>
             Available Simulation Data
           </h3>
           {allSimulations.length === 0 ? (
@@ -154,7 +158,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
                   key={sim.filename}
                   className={`p-2 cursor-pointer hover:bg-node-background transition-colors duration-150 ${
                     simulationInfo && simulationInfo.filename === sim.filename
-                      ? 'bg-lightning-blue/10'
+                      ? 'bg-bitcoin-orange/10'
                       : ''
                   }`}
                   onClick={() => switchSimulation(sim.filename)}>
@@ -164,7 +168,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
                         className={`font-medium ${
                           simulationInfo &&
                           simulationInfo.filename === sim.filename
-                            ? 'text-lightning-blue'
+                            ? 'text-bitcoin-orange'
                             : 'text-satoshi-white'
                         }`}>
                         {sim.filename}

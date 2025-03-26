@@ -91,7 +91,7 @@ const NetworkHealthDashboard = ({
       <div className='flex items-center mb-4'>
         <svg
           xmlns='http://www.w3.org/2000/svg'
-          className='h-6 w-6 mr-2 text-blue-400'
+          className='h-6 w-6 mr-2 text-bitcoin-orange'
           fill='none'
           viewBox='0 0 24 24'
           stroke='currentColor'>
@@ -102,7 +102,7 @@ const NetworkHealthDashboard = ({
             d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
           />
         </svg>
-        <h2 className='text-xl font-semibold text-blue-300'>
+        <h2 className='text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue'>
           Network Health Dashboard
         </h2>
       </div>
@@ -111,7 +111,7 @@ const NetworkHealthDashboard = ({
         <StatCard
           title='Active Nodes'
           value={metrics.activeNodes}
-          color='blue'
+          color='bitcoin-orange'
           icon={
             <svg
               xmlns='http://www.w3.org/2000/svg'
@@ -133,7 +133,7 @@ const NetworkHealthDashboard = ({
         <StatCard
           title='Active Channels'
           value={metrics.activeChannels}
-          color='purple'
+          color='lightning-blue'
           icon={
             <svg
               xmlns='http://www.w3.org/2000/svg'
@@ -157,10 +157,10 @@ const NetworkHealthDashboard = ({
           value={`${metrics.successRate}%`}
           color={
             metrics.successRate > 90
-              ? 'green'
+              ? 'node-green'
               : metrics.successRate > 70
-              ? 'yellow'
-              : 'red'
+              ? 'channel-yellow'
+              : 'warning-red'
           }
           icon={
             <svg
@@ -198,11 +198,11 @@ const NetworkHealthDashboard = ({
           title='Channel Balance Health'
           value={`${metrics.optimalBalancePercentage}%`}
           color={
-            metrics.optimalBalancePercentage > 70
-              ? 'green'
+            metrics.optimalBalancePercentage > 80
+              ? 'node-green'
               : metrics.optimalBalancePercentage > 50
-              ? 'yellow'
-              : 'red'
+              ? 'channel-yellow'
+              : 'warning-red'
           }
           icon={
             <svg
@@ -219,17 +219,17 @@ const NetworkHealthDashboard = ({
               />
             </svg>
           }
-          subtext={`${metrics.criticalChannelsPercentage}% channels need rebalancing`}
+          subtext={`${metrics.criticalChannelsPercentage}% channels critically imbalanced`}
           trend={
-            metrics.optimalBalancePercentage > 75
+            metrics.optimalBalancePercentage > 80
               ? 'up'
               : metrics.optimalBalancePercentage < 50
               ? 'down'
               : 'neutral'
           }
           trendLabel={
-            metrics.optimalBalancePercentage > 75
-              ? '+8%'
+            metrics.optimalBalancePercentage > 80
+              ? '+12%'
               : metrics.optimalBalancePercentage < 50
               ? '-12%'
               : '±0%'
