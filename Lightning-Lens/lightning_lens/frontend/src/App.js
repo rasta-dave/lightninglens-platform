@@ -52,6 +52,12 @@ function App() {
   const [newSimulationNotification, setNewSimulationNotification] =
     useState(null);
 
+  // Add loading state for CSV files
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Track if user has manually selected a file (to prevent auto-switching)
+  const [userSelectedFile, setUserSelectedFile] = useState(null);
+
   // New state for predictions
   const [predictions, setPredictions] = useState([]);
   const [predictionInfo, setPredictionInfo] = useState(null);
@@ -67,134 +73,6 @@ function App() {
 
   // Track if we've already initialized the WebSocket to prevent double connections
   const hasInitializedRef = useRef(false);
-
-  // Use a stable WebSocket URL that doesn't change between renders
-  const webSocketUrl = useMemo(() => {
-    // Only create the URL once - on the first render
-    if (hasInitializedRef.current) {
-      return undefined; // Skip URL creation after first render
-    }
-
-    logDebug('Creating WebSocket URL (once)');
-    return `ws://localhost:3005?t=${Date.now()}`;
-  }, []);
-
-  // Define the message handler before using it in useWebSocket
-  const handleWebSocketMessage = useCallback((message) => {
-    try {
-      // Parse message data
-      const data = JSON.parse(message.data);
-
-      // Log only important message types or in debug mode
-      const isImportant =
-        data.type === 'new_simulation_available' ||
-        data.type === 'simulation_switched' ||
-        data.type === 'predictions_loaded' ||
-        data.type === 'error';
-
-      logDebug(`Received message: ${data.type}`, null, isImportant);
-
-      // Process the message based on its type
-      switch (data.type) {
-        case 'welcome':
-          logDebug('Received welcome message:', data.message);
-          break;
-        case 'transaction':
-          handleTransaction(data);
-          break;
-        case 'simulation_loaded':
-          logDebug('Simulation loaded:', data, isImportant);
-          setSimulationInfo({
-            filename: data.filename,
-            transactionCount: data.transactionCount,
-            timestamp: data.timestamp,
-          });
-          break;
-        case 'all_simulations':
-          logDebug('All simulations:', data);
-          setAllSimulations(data.simulations || []);
-          break;
-        case 'new_simulation_available':
-          logDebug('New simulation available:', data, true);
-          // Show notification about new simulation
-          setNewSimulationNotification({
-            filename: data.filename,
-            timestamp: data.timestamp,
-          });
-          break;
-        case 'simulation_switched':
-          logDebug('Simulation switched:', data, true);
-          if (data.success) {
-            // Clear notification since we've acknowledged it
-            setNewSimulationNotification(null);
-            // Clear existing transactions to start fresh with the new simulation
-            setTransactions([]);
-            setNodes([]);
-            setLinks([]);
-            setFlowData([]);
-            setTotalTransactions(0);
-            setCurrentPosition(0);
-          }
-          break;
-        case 'predictions_data':
-          logDebug('Received predictions data:', data, isImportant);
-          setPredictions(data.predictions || []);
-          setPredictionInfo({
-            filename: data.filename,
-            predictionCount: data.predictions.length,
-            timestamp: data.timestamp,
-          });
-          break;
-        case 'predictions_loaded':
-          logDebug('Predictions loaded:', data, isImportant);
-          // Request the full prediction data
-          safeSendMessage({ type: 'get_latest_predictions' });
-          break;
-        case 'no_predictions':
-          logDebug('No predictions available:', data);
-          setPredictions([]);
-          setPredictionInfo(null);
-          break;
-        default:
-          logDebug('Unhandled message type:', data.type);
-      }
-    } catch (error) {
-      console.error('Error processing message:', error);
-    }
-  }, []);
-
-  // Define the onOpen handler
-  const handleWebSocketOpen = useCallback((event, socketSendFn) => {
-    // Only log the first connection or in debug mode
-    const isFirstConnection = !hasInitializedRef.current;
-    logDebug(
-      `WebSocket connection established (ID: ${connectionIdRef.current}, Instance: ${appInstanceIdRef.current})`,
-      null,
-      isFirstConnection
-    );
-
-    // Mark the connection as initialized
-    hasInitializedRef.current = true;
-
-    // Use the direct send function provided in the callback to avoid race conditions
-    // This guarantees the socket is ready since we're in the onOpen callback
-    try {
-      logDebug(
-        'Requesting simulation info and list (using direct send)...',
-        null,
-        isFirstConnection
-      );
-      const infoMsg = JSON.stringify({ type: 'get_simulation_info' });
-      const listMsg = JSON.stringify({ type: 'get_all_simulations' });
-      const predictionsMsg = JSON.stringify({ type: 'get_latest_predictions' });
-
-      socketSendFn(infoMsg);
-      socketSendFn(listMsg);
-      socketSendFn(predictionsMsg);
-    } catch (err) {
-      console.error('Error sending initial messages:', err);
-    }
-  }, []);
 
   // Track the most recent app instance (for StrictMode handling)
   const [mostRecentInstance, setMostRecentInstance] = useState(null);
@@ -218,14 +96,29 @@ function App() {
   // Determine if this instance should initialize the WebSocket
   const shouldConnect = mostRecentInstance === appInstanceIdRef.current;
 
-  // Call useWebSocket (we only need one stable connection)
+  // Use a stable WebSocket URL that doesn't change between renders
+  const webSocketUrl = useMemo(() => {
+    // Only create the URL once - on the first render
+    if (hasInitializedRef.current) {
+      return undefined; // Skip URL creation after first render
+    }
+
+    logDebug('Creating WebSocket URL (once)');
+    return `ws://localhost:3005?t=${Date.now()}`;
+  }, []);
+
+  // Forward references for functions that will be used in useWebSocket
+  const handleWebSocketMessageRef = useRef(null);
+  const handleWebSocketOpenRef = useRef(null);
+
+  // Call useWebSocket with the forward references
   const { connectionStatus, lastMessage, reconnect, sendMessage } =
     useWebSocket({
       url: webSocketUrl,
       connectionId: connectionIdRef.current,
-      skipConnection: !shouldConnect || !webSocketUrl, // Skip if not the most recent instance or no URL
-      onOpen: handleWebSocketOpen,
-      onMessage: handleWebSocketMessage,
+      skipConnection: !shouldConnect || !webSocketUrl,
+      onOpen: (...args) => handleWebSocketOpenRef.current?.(...args),
+      onMessage: (...args) => handleWebSocketMessageRef.current?.(...args),
       onClose: (event) => {
         logDebug(
           `WebSocket connection closed (ID: ${connectionIdRef.current}, code: ${event.code})`,
@@ -255,27 +148,6 @@ function App() {
     },
     [sendMessage]
   );
-
-  // When a new simulation notification is received, update the simulation list
-  useEffect(() => {
-    if (newSimulationNotification) {
-      // Auto-update the list of simulations
-      setTimeout(() => {
-        safeSendMessage({ type: 'get_all_simulations' });
-      }, 50);
-    }
-  }, [newSimulationNotification, safeSendMessage]);
-
-  // Check for new predictions periodically
-  useEffect(() => {
-    const checkInterval = setInterval(() => {
-      if (connectionStatus === 'connected') {
-        safeSendMessage({ type: 'check_for_new_predictions' });
-      }
-    }, 60000); // Check every minute
-
-    return () => clearInterval(checkInterval);
-  }, [connectionStatus, safeSendMessage]);
 
   // Function to handle incoming transaction data
   const handleTransaction = (data) => {
@@ -415,17 +287,41 @@ function App() {
     });
   };
 
-  // Function to request a switch to a different simulation
+  // Simplified function to switch to a different simulation
   const handleSwitchSimulation = (filename) => {
     setShowSimulationList(false);
+
+    // Start loading indicator
+    setIsLoading(true);
+
+    // Track that user has manually selected this file
+    setUserSelectedFile(filename);
+
+    logDebug('Switching to simulation (user selected):', filename, true);
+
+    // Clear any existing data first
+    setTransactions([]);
+    setNodes([]);
+    setLinks([]);
+    setFlowData([]);
+    setTotalTransactions(0);
+    setCurrentPosition(0);
+
+    // Request the switch with user selection flag
     safeSendMessage({
       type: 'switch_simulation',
       filename: filename,
+      isUserSelected: true,
     });
   };
 
-  // Function to reset the current simulation
+  // Simplified function to reset the current simulation
   const handleResetSimulation = () => {
+    // Keep the user selected file the same, just reset the position
+
+    // Start loading indicator
+    setIsLoading(true);
+
     safeSendMessage({
       type: 'reset_simulation',
     });
@@ -434,6 +330,33 @@ function App() {
     setLinks([]);
     setFlowData([]);
     setCurrentPosition(0);
+  };
+
+  // Modified function to handle viewing the latest simulation
+  const viewLatestSimulation = () => {
+    // Clear user selection to allow auto-switching again
+    setUserSelectedFile(null);
+
+    // Start loading indicator
+    setIsLoading(true);
+
+    // Find and load the most recent simulation
+    if (allSimulations.length > 0) {
+      const latestSim = allSimulations[0]; // Simulations are sorted with most recent first
+      safeSendMessage({
+        type: 'switch_simulation',
+        filename: latestSim.filename,
+        isUserSelected: false,
+      });
+
+      // Clear any existing data
+      setTransactions([]);
+      setNodes([]);
+      setLinks([]);
+      setFlowData([]);
+      setTotalTransactions(0);
+      setCurrentPosition(0);
+    }
   };
 
   // Function to toggle simulation list visibility
@@ -445,10 +368,205 @@ function App() {
     }
   };
 
-  // Function to dismiss a new simulation notification
+  // Modified function to dismiss a new simulation notification
   const dismissNotification = () => {
     setNewSimulationNotification(null);
   };
+
+  // Define the message handler and update the ref
+  const handleWebSocketMessage = useCallback(
+    (message) => {
+      try {
+        // Parse message data
+        const data = JSON.parse(message.data);
+
+        // Log only important message types or in debug mode
+        const isImportant =
+          data.type === 'new_simulation_available' ||
+          data.type === 'simulation_switched' ||
+          data.type === 'predictions_loaded' ||
+          data.type === 'error';
+
+        logDebug(`Received message: ${data.type}`, null, isImportant);
+
+        // If user has selected a specific file, block automatic switching to another file
+        if (
+          userSelectedFile &&
+          data.type === 'simulation_loaded' &&
+          data.filename !== userSelectedFile
+        ) {
+          logDebug(
+            `Blocking automatic switch to ${data.filename} - user selected ${userSelectedFile}`
+          );
+
+          // Re-request the user's selected file
+          setTimeout(() => {
+            safeSendMessage({
+              type: 'switch_simulation',
+              filename: userSelectedFile,
+              isUserSelected: true,
+            });
+          }, 100);
+
+          return; // Skip processing this message
+        }
+
+        // Process the message based on its type
+        switch (data.type) {
+          case 'welcome':
+            logDebug('Received welcome message:', data.message);
+            // If we have a user-selected file, request it on connection
+            if (userSelectedFile) {
+              setTimeout(() => {
+                safeSendMessage({
+                  type: 'switch_simulation',
+                  filename: userSelectedFile,
+                  isUserSelected: true,
+                });
+              }, 500);
+            }
+            break;
+
+          case 'transaction':
+            // Process all transactions without manual selection checks
+            handleTransaction(data);
+            break;
+
+          case 'simulation_loaded':
+            logDebug('Simulation loaded:', data, isImportant);
+            setIsLoading(false); // Stop loading when simulation is loaded
+
+            // Update simulation info without manual selection checks
+            setSimulationInfo({
+              filename: data.filename,
+              transactionCount: data.transactionCount,
+              timestamp: data.timestamp,
+            });
+            break;
+
+          case 'all_simulations':
+            logDebug('All simulations:', data);
+            setAllSimulations(data.simulations || []);
+            break;
+
+          case 'new_simulation_available':
+            logDebug('New simulation available:', data, true);
+            // Show notification for all new simulations
+            setNewSimulationNotification({
+              filename: data.filename,
+              timestamp: data.timestamp,
+            });
+            break;
+
+          case 'simulation_switched':
+            logDebug('Simulation switched:', data, true);
+            if (data.success) {
+              // No longer need to check if selection is locked
+
+              // Clear notification since we've acknowledged it
+              setNewSimulationNotification(null);
+
+              // Stop loading when switch completes
+              setIsLoading(false);
+
+              // Clear existing transactions to start fresh with the new simulation
+              setTransactions([]);
+              setNodes([]);
+              setLinks([]);
+              setFlowData([]);
+              setTotalTransactions(0);
+              setCurrentPosition(0);
+            }
+            break;
+
+          case 'predictions_data':
+            logDebug('Received predictions data:', data, isImportant);
+            setPredictions(data.predictions || []);
+            setPredictionInfo({
+              filename: data.filename,
+              predictionCount: data.predictions.length,
+              timestamp: data.timestamp,
+            });
+            break;
+          case 'predictions_loaded':
+            logDebug('Predictions loaded:', data, isImportant);
+            // Request the full prediction data
+            safeSendMessage({ type: 'get_latest_predictions' });
+            break;
+          case 'no_predictions':
+            logDebug('No predictions available:', data);
+            setPredictions([]);
+            setPredictionInfo(null);
+            break;
+          default:
+            logDebug('Unhandled message type:', data.type);
+        }
+      } catch (error) {
+        console.error('Error processing message:', error);
+      }
+    },
+    [simulationInfo, userSelectedFile, safeSendMessage] // Add dependencies
+  );
+
+  // Define the onOpen handler and update the ref
+  const handleWebSocketOpen = useCallback((event, socketSendFn) => {
+    // Only log the first connection or in debug mode
+    const isFirstConnection = !hasInitializedRef.current;
+    logDebug(
+      `WebSocket connection established (ID: ${connectionIdRef.current}, Instance: ${appInstanceIdRef.current})`,
+      null,
+      isFirstConnection
+    );
+
+    // Mark the connection as initialized
+    hasInitializedRef.current = true;
+
+    // Use the direct send function provided in the callback to avoid race conditions
+    // This guarantees the socket is ready since we're in the onOpen callback
+    try {
+      logDebug(
+        'Requesting simulation info and list (using direct send)...',
+        null,
+        isFirstConnection
+      );
+      const infoMsg = JSON.stringify({ type: 'get_simulation_info' });
+      const listMsg = JSON.stringify({ type: 'get_all_simulations' });
+      const predictionsMsg = JSON.stringify({ type: 'get_latest_predictions' });
+
+      socketSendFn(infoMsg);
+      socketSendFn(listMsg);
+      socketSendFn(predictionsMsg);
+    } catch (err) {
+      console.error('Error sending initial messages:', err);
+    }
+  }, []);
+
+  // Update forward refs to point to the actual functions after they're created
+  useEffect(() => {
+    handleWebSocketMessageRef.current = handleWebSocketMessage;
+    handleWebSocketOpenRef.current = handleWebSocketOpen;
+  }, [handleWebSocketMessage, handleWebSocketOpen]);
+
+  // When a new simulation notification is received, update the simulation list
+  useEffect(() => {
+    if (newSimulationNotification) {
+      // Auto-update the list of simulations
+      setTimeout(() => {
+        safeSendMessage({ type: 'get_all_simulations' });
+      }, 50);
+    }
+  }, [newSimulationNotification, safeSendMessage]);
+
+  // Check for new predictions periodically
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (connectionStatus === 'connected') {
+        safeSendMessage({ type: 'check_for_new_predictions' });
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(checkInterval);
+  }, [connectionStatus, safeSendMessage]);
 
   return (
     <div className='min-h-screen bg-gray-900 text-gray-100'>
@@ -456,17 +574,11 @@ function App() {
       <header className='bg-gradient-to-r from-blue-900 to-purple-900 text-white p-4 shadow-lg border-b border-blue-700'>
         <div className='container mx-auto flex justify-between items-center'>
           <div className='flex items-center'>
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-8 w-8 mr-2 text-yellow-400'
-              viewBox='0 0 20 20'
-              fill='currentColor'>
-              <path
-                fillRule='evenodd'
-                d='M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z'
-                clipRule='evenodd'
-              />
-            </svg>
+            <img
+              src='/images/lightnings.svg'
+              alt='Lightning Lens Logo'
+              className='h-8 w-8 mr-2'
+            />
             <h1 className='text-2xl font-bold'>LightningLens Dashboard</h1>
           </div>
           <div className='flex items-center'>
@@ -526,15 +638,37 @@ function App() {
         </div>
       )}
 
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className='fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50'>
+          <div className='bg-dark-node p-6 rounded-lg shadow-lightning-glow flex flex-col items-center'>
+            <div className='w-16 h-16 border-4 border-t-lightning-blue border-r-lightning-purple border-b-bitcoin-orange border-l-channel-yellow rounded-full animate-spin mb-4'></div>
+            <p className='text-lightning-blue text-lg font-semibold'>
+              Loading simulation data...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Simulation Info & Controls */}
       <div className='container mx-auto p-4 mb-4 bg-node-background shadow-lightning-glow rounded-lg mt-4 border border-lightning-blue border-opacity-20'>
         <div className='flex justify-between items-center flex-wrap'>
           <div>
-            <h2 className='text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue'>
-              {simulationInfo
-                ? simulationInfo.filename
-                : 'No simulation data loaded'}
-            </h2>
+            <div className='flex items-center'>
+              <h2 className='text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue'>
+                {simulationInfo
+                  ? simulationInfo.filename
+                  : 'No simulation data loaded'}
+              </h2>
+
+              {/* Add indicator when user has manually selected a file */}
+              {userSelectedFile && (
+                <span className='ml-3 text-xs px-2 py-1 bg-yellow-600 text-white rounded-full'>
+                  Manual Selection
+                </span>
+              )}
+            </div>
+
             <p className='text-satoshi-white'>
               {totalTransactions > 0
                 ? `Transactions: ${currentPosition} / ${totalTransactions}`
@@ -547,6 +681,7 @@ function App() {
                 )}
             </p>
           </div>
+
           <div className='flex space-x-2 mt-2 sm:mt-0'>
             <button onClick={handleResetSimulation} className='bitcoin-btn'>
               <span className='flex items-center'>
@@ -566,6 +701,7 @@ function App() {
                 Restart
               </span>
             </button>
+
             <button onClick={toggleSimulationList} className='lightning-btn'>
               <span className='flex items-center'>
                 <svg
@@ -586,6 +722,28 @@ function App() {
                   : 'Show Simulation Data'}
               </span>
             </button>
+
+            <button
+              onClick={viewLatestSimulation}
+              className='px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:bg-opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none'>
+              <span className='flex items-center'>
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  className='h-4 w-4 mr-1'
+                  fill='none'
+                  viewBox='0 0 24 24'
+                  stroke='currentColor'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z'
+                  />
+                </svg>
+                View Latest
+              </span>
+            </button>
+
             <button
               onClick={() => setShowPredictionsTab(!showPredictionsTab)}
               className={`px-4 py-2 ${

@@ -159,6 +159,9 @@ const wss = new WebSocket.Server({
 const clients = new Map();
 let nextClientId = 1;
 
+// Track which clients have manually selected a file to prevent auto-switching
+const clientSelections = new Map();
+
 // Keep track of the latest simulation file
 let latestSimulationFile = null;
 let currentTransactions = [];
@@ -348,32 +351,23 @@ function broadcastTransactions() {
 
 // Broadcast a notification about a new simulation file
 function broadcastNewSimulationNotification(filename) {
-  if (clients.size === 0) return;
-
   const message = JSON.stringify({
     type: 'new_simulation_available',
     filename: filename,
     timestamp: new Date().toISOString(),
   });
 
-  const deadClients = [];
   clients.forEach((client, clientId) => {
-    if (!safeSend(client, message)) {
-      deadClients.push(clientId);
-    }
+    // Send notifications to all clients
+    safeSend(client, message);
   });
-
-  // Remove dead clients
-  if (deadClients.length > 0) {
-    console.log(`Removing ${deadClients.length} dead clients`);
-    deadClients.forEach((clientId) => {
-      clients.delete(clientId);
-    });
-  }
 }
 
 // Load a specific simulation file
-async function loadSpecificSimulationFile(filePath) {
+async function loadSpecificSimulationFile(
+  filePath,
+  respectUserSelections = false
+) {
   // Don't reload the same file unless forced
   if (filePath === latestSimulationFile && currentTransactions.length > 0) {
     console.log('Already using this simulation file');
@@ -412,16 +406,30 @@ async function loadSpecificSimulationFile(filePath) {
       )}`
     );
 
-    // Broadcast file info to all clients
+    // Broadcast file info to clients based on their selection preferences
+    const fileName = path.basename(filePath);
     const message = JSON.stringify({
       type: 'simulation_loaded',
-      filename: path.basename(filePath),
+      filename: fileName,
       transactionCount: currentTransactions.length,
       timestamp: new Date().toISOString(),
     });
 
+    // Send to clients, respecting user selections if requested
     const deadClients = [];
     clients.forEach((client, clientId) => {
+      // Only respect user selections if this was an automatic load (not user-requested)
+      if (respectUserSelections) {
+        const userSelection = clientSelections.get(clientId);
+        // Skip clients with a different user selection
+        if (userSelection && userSelection !== fileName) {
+          console.log(
+            `Skipping auto-load for client ${clientId} - has manual selection: ${userSelection}`
+          );
+          return;
+        }
+      }
+
       if (!safeSend(client, message)) {
         deadClients.push(clientId);
       }
@@ -434,6 +442,7 @@ async function loadSpecificSimulationFile(filePath) {
       );
       deadClients.forEach((clientId) => {
         clients.delete(clientId);
+        clientSelections.delete(clientId);
       });
     }
   } catch (error) {
@@ -475,8 +484,8 @@ async function checkForNewFiles() {
     // Notify clients that a new file is available
     broadcastNewSimulationNotification(path.basename(latestFile));
 
-    // Load the new file
-    await loadSpecificSimulationFile(latestFile);
+    // Load the file but respect user selections
+    await loadSpecificSimulationFile(latestFile, true);
   }
 }
 
@@ -491,6 +500,7 @@ const watcher = chokidar.watch(DATA_DIR, {
   },
 });
 
+// Modify the watcher.on 'add' event handler to respect user selections
 watcher.on('add', async (filePath) => {
   if (filePath.endsWith('.csv') && filePath.includes('lightning_simulation_')) {
     console.log(`New simulation file detected: ${filePath}`);
@@ -500,13 +510,14 @@ watcher.on('add', async (filePath) => {
       // Check that the file has actual data
       const hasData = await hasActualData(filePath);
       if (hasData) {
-        // Notify clients that a new file is available
+        // Notify all clients that a new file is available
         broadcastNewSimulationNotification(path.basename(filePath));
 
-        // If this is the most recent file, load it
+        // If this is the most recent file, load it only for clients without user selections
         const latestFile = findLatestSimulationFile();
         if (latestFile === filePath) {
-          await loadSpecificSimulationFile(filePath);
+          // Only load automatically for clients that don't have a manual selection
+          await loadSpecificSimulationFile(filePath, true);
         }
       } else {
         console.log(
@@ -578,6 +589,17 @@ wss.on('connection', (ws, req) => {
           sendAllSimulations(ws);
           break;
         case 'switch_simulation':
+          // Track if this was a user-initiated selection
+          if (data.isUserSelected) {
+            clientSelections.set(clientId, data.filename);
+            console.log(
+              `Client ${clientId} manually selected: ${data.filename}`
+            );
+          } else if (data.isUserSelected === false) {
+            // Explicitly clearing user selection
+            clientSelections.delete(clientId);
+            console.log(`Client ${clientId} cleared manual selection`);
+          }
           switchToSimulation(data.filename, ws);
           break;
         case 'check_for_new_files':
@@ -619,8 +641,9 @@ wss.on('connection', (ws, req) => {
         reason || 'No reason provided'
       }`
     );
-    // Remove client from map
+    // Remove client from maps
     clients.delete(clientId);
+    clientSelections.delete(clientId);
     console.log(`Active clients: ${clients.size}`);
   });
 
@@ -877,7 +900,7 @@ function switchToSimulation(filename, client) {
   if (fs.existsSync(filePath)) {
     loadSpecificSimulationFile(filePath)
       .then(() => {
-        // Broadcast to all clients that the simulation has changed
+        // Broadcast to all clients without checking locks
         broadcast(
           JSON.stringify({
             type: 'simulation_switched',
@@ -925,33 +948,23 @@ function resetSimulation(client) {
   );
 }
 
-// Broadcast to all clients
+// Update the broadcast function to broadcast to all clients
 function broadcast(message) {
-  if (clients.size === 0) return;
-
-  console.log(`Broadcasting to ${clients.size} clients`);
-
-  // Track clients to remove if they're no longer connected
   const deadClients = [];
 
   clients.forEach((client, clientId) => {
-    if (client.readyState === WebSocket.OPEN) {
-      if (!safeSend(client, message)) {
-        deadClients.push(clientId);
-      }
-    } else {
-      // Client is in CLOSING or CLOSED state
-      console.log(
-        `Client ${clientId} is in state ${client.readyState}, removing from clients list`
-      );
+    if (!safeSend(client, message)) {
       deadClients.push(clientId);
     }
   });
 
-  // Remove dead clients from the map
-  deadClients.forEach((clientId) => {
-    clients.delete(clientId);
-  });
+  // Remove dead clients
+  if (deadClients.length > 0) {
+    console.log(`Removing ${deadClients.length} dead clients`);
+    deadClients.forEach((clientId) => {
+      clients.delete(clientId);
+    });
+  }
 }
 
 // Helper function to send latest predictions to a client

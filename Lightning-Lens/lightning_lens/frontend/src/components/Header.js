@@ -21,13 +21,11 @@ const Header = ({ connectionStatus, simulationInfo }) => {
         <div className='flex justify-between items-center'>
           <div className='flex items-center space-x-3'>
             <div className='flex items-center'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                viewBox='0 0 24 24'
-                fill='#F7931A' /* Bitcoin orange */
-                className='w-8 h-8 mr-2 filter drop-shadow-xl'>
-                <path d='M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z' />
-              </svg>
+              <img
+                src='/images/lightnings.svg'
+                alt='Lightning Lens Logo'
+                className='w-8 h-8 mr-2 filter drop-shadow-xl'
+              />
               <h1 className='text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue'>
                 Lightning Lens
               </h1>
