@@ -26,22 +26,31 @@ function useD3(renderFn, dependencies = []) {
     // Skip if refs aren't available
     if (!containerRef.current) return;
 
-    // Clear previous SVG content if it exists
-    if (!svgRef.current) {
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight || 350;
+    // Cleanup previous SVG before recreating
+    if (svgRef.current) {
+      // Call cleanup function from previous render
+      if (cleanupFnRef.current) {
+        cleanupFnRef.current();
+        cleanupFnRef.current = null;
+      }
 
-      // Create new SVG element if it doesn't exist
-      svgRef.current = d3
-        .select(containerRef.current)
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height)
-        .attr('viewBox', [0, 0, width, height]);
-    } else {
-      // Just clear the existing SVG content
-      d3.select(svgRef.current.node()).selectAll('*').remove();
+      // Remove the old SVG completely
+      d3.select(svgRef.current.node()).remove();
+      svgRef.current = null;
     }
+
+    // Always create a new SVG element
+    const width = containerRef.current.clientWidth;
+    const height = containerRef.current.clientHeight || 350;
+
+    svgRef.current = d3
+      .select(containerRef.current)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('viewBox', [0, 0, width, height]);
+
+    console.log('Creating new SVG for visualization', dependencies);
 
     // Call the render function using the ref
     const cleanupFn = renderFnRef.current(containerRef, svgRef.current);

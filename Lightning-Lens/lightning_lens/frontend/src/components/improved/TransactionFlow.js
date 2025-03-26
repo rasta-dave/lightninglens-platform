@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import * as d3 from 'd3';
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import useD3 from '../../hooks/improved/useD3';
@@ -12,19 +12,36 @@ const TransactionFlow = ({ flowData }) => {
   // State to track filtered links
   const [filteredLinkCount, setFilteredLinkCount] = useState(0);
   const [totalLinkCount, setTotalLinkCount] = useState(0);
+  const [circularConnectionPercentage, setCircularConnectionPercentage] =
+    useState(0);
   // Add state for visualization mode
   const [visualizationMode, setVisualizationMode] = useState('sankey'); // 'sankey' or 'tabular'
+  // Add a key to force re-render when toggling visualization modes
+  const [visualizationKey, setVisualizationKey] = useState(0);
 
   // Toggle visualization mode
   const toggleVisualizationMode = () => {
-    if (visualizationMode === 'sankey') setVisualizationMode('tabular');
-    else setVisualizationMode('sankey');
+    // Toggle the mode
+    setVisualizationMode((prev) => (prev === 'sankey' ? 'tabular' : 'sankey'));
+    // Increment the key to force a complete re-render of the D3 visualization
+    setVisualizationKey((prev) => prev + 1);
   };
+
+  // Calculate circular connection percentage whenever filtered link count changes
+  useEffect(() => {
+    if (totalLinkCount > 0) {
+      const percentage = Math.round((filteredLinkCount / totalLinkCount) * 100);
+      setCircularConnectionPercentage(percentage);
+    }
+  }, [filteredLinkCount, totalLinkCount]);
 
   // Main render function to be passed to useD3
   const renderFlow = useCallback(
     (containerRef, svg) => {
       if (!flowData || flowData.length === 0) return;
+
+      // Clear any existing content to ensure clean rendering
+      svg.selectAll('*').remove();
 
       // Get dimensions
       const width = containerRef.current.clientWidth;
@@ -179,16 +196,22 @@ const TransactionFlow = ({ flowData }) => {
         .attr('stop-color', '#3D8EF7');
 
       // Calculate circular connection percentage for display
-      const circularConnectionPercentage =
+      const currentCircularConnectionPercentage =
         flowData.length > 0
           ? Math.round((skippedLinkCount / flowData.length) * 100)
           : 0;
 
+      console.log(
+        `Visualization mode: ${visualizationMode}, Circular connections: ${currentCircularConnectionPercentage}%`
+      );
+
       // Choose visualization based on selected mode
       if (visualizationMode === 'tabular') {
+        console.log('Rendering tabular view');
         renderTabularView();
       } else {
         // Default to Sankey diagram
+        console.log('Rendering Sankey view');
         try {
           renderSankeyDiagram();
         } catch (error) {
@@ -745,27 +768,13 @@ const TransactionFlow = ({ flowData }) => {
     [flowData, visualizationMode]
   );
 
-  // Add circularConnectionPercentage to component state for use in the JSX
-  const [circularConnectionPercentage, setCircularConnectionPercentage] =
-    useState(0);
-
   // Memoized dependencies
   const dependencies = useMemo(() => {
-    return [flowData, flowData?.length, visualizationMode];
-  }, [flowData, visualizationMode]);
+    return [flowData, visualizationMode, visualizationKey];
+  }, [flowData, visualizationMode, visualizationKey]);
 
   // Use our custom hook for D3 integration
-  const { containerRef } = useD3((containerRef, svg) => {
-    const result = renderFlow(containerRef, svg);
-
-    // Calculate and set circular connection percentage
-    if (totalLinkCount > 0) {
-      const percentage = Math.round((filteredLinkCount / totalLinkCount) * 100);
-      setCircularConnectionPercentage(percentage);
-    }
-
-    return result;
-  }, dependencies);
+  const { containerRef } = useD3(renderFlow, dependencies);
 
   // Handle empty state
   if (!flowData || flowData.length === 0) {
@@ -802,6 +811,7 @@ const TransactionFlow = ({ flowData }) => {
 
   return (
     <div
+      key={`flow-${visualizationMode}-${visualizationKey}`}
       ref={containerRef}
       className='w-full p-2 relative overflow-hidden'
       style={{ height: '400px' }}
