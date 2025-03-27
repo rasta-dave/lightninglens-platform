@@ -1,4 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+
+// Sample data to use when no real predictions are available
+const SAMPLE_PREDICTIONS = Array(50)
+  .fill(null)
+  .map((_, i) => ({
+    channel_id: `sample_channel_${i + 1}`,
+    capacity: `${Math.round(1000000 + Math.random() * 5000000)}`,
+    balance_ratio: `${Math.random().toFixed(4)}`,
+    optimal_ratio: `${Math.random().toFixed(4)}`,
+    adjustment_needed: `${(Math.random() * 2 - 1).toFixed(4)}`,
+    success_rate: '0.85',
+  }));
 
 // Component for displaying channel balance predictions and recommendations
 const PredictionAnalysis = ({ predictions }) => {
@@ -8,13 +20,43 @@ const PredictionAnalysis = ({ predictions }) => {
     direction: 'asc',
   });
   const [viewMode, setViewMode] = useState('all'); // 'all', 'critical', 'ok'
+  const [useSampleData, setUseSampleData] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const resultsPerPage = 15;
+
+  useEffect(() => {
+    // Log the predictions data for debugging
+    console.log('PredictionAnalysis received predictions:', predictions);
+
+    // If no predictions provided, switch to sample data after 5 seconds
+    if (!predictions || predictions.length === 0) {
+      const timer = setTimeout(() => {
+        console.log('No predictions data after timeout, using sample data');
+        setUseSampleData(true);
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    } else {
+      setUseSampleData(false);
+    }
+  }, [predictions]);
+
+  // Use real or sample predictions based on availability
+  const effectivePredictions = useMemo(() => {
+    if (useSampleData) {
+      return SAMPLE_PREDICTIONS;
+    }
+    return predictions || [];
+  }, [predictions, useSampleData]);
 
   // Filter and sort predictions
   const filteredPredictions = useMemo(() => {
-    if (!predictions || predictions.length === 0) return [];
+    if (!effectivePredictions || effectivePredictions.length === 0) return [];
 
     // First, filter by search term
-    let filtered = predictions;
+    let filtered = effectivePredictions;
 
     if (searchTerm) {
       const lowercaseSearch = searchTerm.toLowerCase();
@@ -46,7 +88,36 @@ const PredictionAnalysis = ({ predictions }) => {
     });
 
     return sortedPredictions;
-  }, [predictions, searchTerm, sortConfig, viewMode]);
+  }, [effectivePredictions, searchTerm, sortConfig, viewMode]);
+
+  // Get paginated results
+  const paginatedPredictions = useMemo(() => {
+    const startIndex = (currentPage - 1) * resultsPerPage;
+    return filteredPredictions.slice(startIndex, startIndex + resultsPerPage);
+  }, [filteredPredictions, currentPage]);
+
+  // Calculate total pages
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredPredictions.length / resultsPerPage);
+  }, [filteredPredictions]);
+
+  // Page navigation functions
+  const goToPage = (page) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(1, prev - 1));
+  };
+
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+  };
+
+  // Reset page when filters change
+  useMemo(() => {
+    setCurrentPage(1);
+  }, [searchTerm, viewMode, sortConfig]);
 
   // Request a sort
   const requestSort = (key) => {
@@ -71,14 +142,14 @@ const PredictionAnalysis = ({ predictions }) => {
 
   // Calculate some metrics
   const metrics = useMemo(() => {
-    if (!predictions || predictions.length === 0)
+    if (!effectivePredictions || effectivePredictions.length === 0)
       return { totalChannels: 0, criticalChannels: 0, optimalChannels: 0 };
 
-    const total = predictions.length;
-    const critical = predictions.filter(
+    const total = effectivePredictions.length;
+    const critical = effectivePredictions.filter(
       (p) => Math.abs(parseFloat(p.adjustment_needed)) > 0.3
     ).length;
-    const optimal = predictions.filter(
+    const optimal = effectivePredictions.filter(
       (p) => Math.abs(parseFloat(p.adjustment_needed)) < 0.1
     ).length;
 
@@ -89,29 +160,35 @@ const PredictionAnalysis = ({ predictions }) => {
       criticalPercent: Math.round((critical / total) * 100),
       optimalPercent: Math.round((optimal / total) * 100),
     };
-  }, [predictions]);
+  }, [effectivePredictions]);
 
   // Get the unique nodes from the channel_ids
   const nodes = useMemo(() => {
-    if (!predictions || predictions.length === 0) return new Set();
+    if (!effectivePredictions || effectivePredictions.length === 0)
+      return new Set();
 
     const nodeSet = new Set();
-    predictions.forEach((pred) => {
+    effectivePredictions.forEach((pred) => {
       const [source] = pred.channel_id.split('_');
       nodeSet.add(source);
     });
 
     return nodeSet;
-  }, [predictions]);
+  }, [effectivePredictions]);
 
-  // Render a loading state if predictions aren't available
-  if (!predictions || predictions.length === 0) {
+  // Render a loading state if predictions aren't available and not using sample data
+  if ((!predictions || predictions.length === 0) && !useSampleData) {
     return (
       <div className='p-4 text-center'>
         <div className='animate-pulse flex flex-col items-center'>
           <div className='h-6 bg-gray-700 rounded w-3/4 mb-4'></div>
           <div className='h-32 bg-gray-700 rounded w-full'></div>
           <p className='mt-4 text-gray-400'>Loading prediction data...</p>
+          <button
+            onClick={() => setUseSampleData(true)}
+            className='mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors'>
+            Use Sample Data
+          </button>
         </div>
       </div>
     );
@@ -119,6 +196,18 @@ const PredictionAnalysis = ({ predictions }) => {
 
   return (
     <div className='bg-gray-800 rounded-lg shadow-md'>
+      {useSampleData && (
+        <div className='bg-yellow-800 text-yellow-100 p-2 mb-4 rounded-md text-sm'>
+          <strong>Note:</strong> Using sample data since real prediction data is
+          unavailable.
+          <button
+            onClick={() => setUseSampleData(false)}
+            className='ml-4 px-2 py-1 bg-yellow-700 text-yellow-100 rounded-md hover:bg-yellow-600 transition-colors text-xs'>
+            Try Real Data
+          </button>
+        </div>
+      )}
+
       {/* Summary Metrics */}
       <div className='mb-6 grid grid-cols-1 md:grid-cols-4 gap-4'>
         <div className='bg-blue-900/30 p-4 rounded-lg shadow border border-blue-800'>
@@ -160,8 +249,8 @@ const PredictionAnalysis = ({ predictions }) => {
             Success Rate
           </h3>
           <p className='text-3xl font-bold text-purple-200'>
-            {predictions[0].success_rate
-              ? `${parseFloat(predictions[0].success_rate) * 100}%`
+            {effectivePredictions[0]?.success_rate
+              ? `${parseFloat(effectivePredictions[0].success_rate) * 100}%`
               : 'N/A'}
           </p>
           <p className='text-sm text-purple-400'>ML model confidence</p>
@@ -208,6 +297,18 @@ const PredictionAnalysis = ({ predictions }) => {
             }`}>
             Good
           </button>
+        </div>
+      </div>
+
+      {/* Results Count and Pagination Info */}
+      <div className='mb-4 flex justify-between items-center text-gray-400 text-sm'>
+        <div>
+          Showing{' '}
+          {paginatedPredictions.length > 0
+            ? (currentPage - 1) * resultsPerPage + 1
+            : 0}
+          -{Math.min(currentPage * resultsPerPage, filteredPredictions.length)}{' '}
+          of {filteredPredictions.length} results
         </div>
       </div>
 
@@ -272,7 +373,7 @@ const PredictionAnalysis = ({ predictions }) => {
             </tr>
           </thead>
           <tbody className='bg-gray-800 divide-y divide-gray-700'>
-            {filteredPredictions.map((prediction, index) => {
+            {paginatedPredictions.map((prediction, index) => {
               const channelStatus = getChannelStatus(
                 prediction.adjustment_needed
               );
@@ -378,6 +479,164 @@ const PredictionAnalysis = ({ predictions }) => {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {filteredPredictions.length > 0 && (
+        <div className='mt-4 mb-2 flex justify-between items-center'>
+          <div className='flex-1 flex justify-between sm:hidden'>
+            <button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 1}
+              className={`relative inline-flex items-center px-4 py-2 border border-gray-700 text-sm font-medium rounded-md text-gray-300 bg-gray-800 ${
+                currentPage === 1
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:bg-gray-700'
+              }`}>
+              Previous
+            </button>
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              className={`ml-3 relative inline-flex items-center px-4 py-2 border border-gray-700 text-sm font-medium rounded-md text-gray-300 bg-gray-800 ${
+                currentPage === totalPages
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:bg-gray-700'
+              }`}>
+              Next
+            </button>
+          </div>
+          <div className='hidden sm:flex-1 sm:flex sm:items-center sm:justify-between'>
+            <div>
+              <p className='text-sm text-gray-400'>
+                Showing{' '}
+                <span className='font-medium'>
+                  {paginatedPredictions.length > 0
+                    ? (currentPage - 1) * resultsPerPage + 1
+                    : 0}
+                </span>{' '}
+                to{' '}
+                <span className='font-medium'>
+                  {Math.min(
+                    currentPage * resultsPerPage,
+                    filteredPredictions.length
+                  )}
+                </span>{' '}
+                of{' '}
+                <span className='font-medium'>
+                  {filteredPredictions.length}
+                </span>{' '}
+                results
+              </p>
+            </div>
+            <div>
+              <nav
+                className='relative z-0 inline-flex rounded-md shadow-sm -space-x-px'
+                aria-label='Pagination'>
+                <button
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 ${
+                    currentPage === 1
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-gray-700'
+                  }`}>
+                  <span className='sr-only'>Previous</span>
+                  <svg
+                    className='h-5 w-5'
+                    xmlns='http://www.w3.org/2000/svg'
+                    viewBox='0 0 20 20'
+                    fill='currentColor'
+                    aria-hidden='true'>
+                    <path
+                      fillRule='evenodd'
+                      d='M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z'
+                      clipRule='evenodd'
+                    />
+                  </svg>
+                </button>
+
+                {/* First Page */}
+                {currentPage > 2 && (
+                  <button
+                    onClick={() => goToPage(1)}
+                    className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700'>
+                    1
+                  </button>
+                )}
+
+                {/* Ellipsis if needed */}
+                {currentPage > 3 && (
+                  <span className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300'>
+                    ...
+                  </span>
+                )}
+
+                {/* Previous Page */}
+                {currentPage > 1 && (
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700'>
+                    {currentPage - 1}
+                  </button>
+                )}
+
+                {/* Current Page */}
+                <button className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-blue-600 text-sm font-medium text-white'>
+                  {currentPage}
+                </button>
+
+                {/* Next Page */}
+                {currentPage < totalPages && (
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700'>
+                    {currentPage + 1}
+                  </button>
+                )}
+
+                {/* Ellipsis if needed */}
+                {currentPage < totalPages - 2 && (
+                  <span className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300'>
+                    ...
+                  </span>
+                )}
+
+                {/* Last Page */}
+                {currentPage < totalPages - 1 && (
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    className='relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700'>
+                    {totalPages}
+                  </button>
+                )}
+
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 ${
+                    currentPage === totalPages
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-gray-700'
+                  }`}>
+                  <span className='sr-only'>Next</span>
+                  <svg
+                    className='h-5 w-5'
+                    xmlns='http://www.w3.org/2000/svg'
+                    viewBox='0 0 20 20'
+                    fill='currentColor'
+                    aria-hidden='true'>
+                    <path
+                      fillRule='evenodd'
+                      d='M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z'
+                      clipRule='evenodd'
+                    />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
