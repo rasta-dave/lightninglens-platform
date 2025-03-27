@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+} from 'react';
 import * as d3 from 'd3';
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import useD3 from '../../hooks/improved/useD3';
@@ -14,18 +20,53 @@ const TransactionFlow = ({ flowData }) => {
   const [totalLinkCount, setTotalLinkCount] = useState(0);
   const [circularConnectionPercentage, setCircularConnectionPercentage] =
     useState(0);
-  // Add state for visualization mode
+  // Add state for visualization mode - default to sankey mode as primary visualization
   const [visualizationMode, setVisualizationMode] = useState('sankey'); // 'sankey' or 'tabular'
   // Add a key to force re-render when toggling visualization modes
   const [visualizationKey, setVisualizationKey] = useState(0);
 
-  // Toggle visualization mode
-  const toggleVisualizationMode = () => {
+  // Store last successful mode in ref to handle failed renders
+  const lastSuccessfulModeRef = useRef('sankey');
+
+  // Add a performance settings object at the top of the component
+  // This allows easy tuning of performance-critical parameters
+  const performanceSettings = useMemo(
+    () => ({
+      // Maximum particles per link - lower is better for performance
+      maxParticlesPerLink: 3,
+      // Minimum link width to show particles
+      minLinkWidthForParticles: 2, // Reduced from 3 to show more animations
+      // Animation duration in ms (higher = smoother but more CPU intensive)
+      animationDuration: 4000, // Increased for smoother animation
+      // Skip animations entirely for very large datasets
+      skipAnimationsThreshold: 150, // Increased threshold to allow animations for medium datasets
+      // Maximum nodes to show labels for
+      maxNodeLabels: 40, // Increased from 30
+      // Throttle mouseover events to improve performance
+      mouseEventThrottle: 40, // ms (slightly increased to reduce event processing)
+      // Use simplified animation for better performance
+      useSimplifiedAnimation: false, // Set to true for very large datasets
+    }),
+    []
+  );
+
+  // Calculate whether this is a large dataset that needs performance optimizations
+  const isLargeDataset = useMemo(() => {
+    if (!flowData) return false;
+    return flowData.length > performanceSettings.skipAnimationsThreshold;
+  }, [flowData, performanceSettings.skipAnimationsThreshold]);
+
+  // Make sure the toggle function properly updates the visualizationMode and forces a re-render
+  const toggleVisualizationMode = useCallback(() => {
+    console.log('Toggling visualization mode from:', visualizationMode);
     // Toggle the mode
-    setVisualizationMode((prev) => (prev === 'sankey' ? 'tabular' : 'sankey'));
+    const newMode = visualizationMode === 'sankey' ? 'tabular' : 'sankey';
+    setVisualizationMode(newMode);
+    // Store the attempted mode change
+    lastSuccessfulModeRef.current = newMode;
     // Increment the key to force a complete re-render of the D3 visualization
     setVisualizationKey((prev) => prev + 1);
-  };
+  }, [visualizationMode]);
 
   // Calculate circular connection percentage whenever filtered link count changes
   useEffect(() => {
@@ -35,10 +76,45 @@ const TransactionFlow = ({ flowData }) => {
     }
   }, [filteredLinkCount, totalLinkCount]);
 
+  // Throttle function for mouse events to reduce computational load
+  const throttle = useCallback((func, limit) => {
+    let lastCall = 0;
+    return function (...args) {
+      const now = Date.now();
+      if (now - lastCall >= limit) {
+        lastCall = now;
+        func.apply(this, args);
+      }
+    };
+  }, []);
+
+  // Add refs to maintain state persistence across rerenders
+  const lastSuccessfulRenderTimeRef = useRef(null);
+  const hasRenderedSankeyRef = useRef(false);
+
+  // Track animations and cleanup functions to prevent memory leaks
+  const animationCleanupFnsRef = useRef([]);
+
   // Main render function to be passed to useD3
   const renderFlow = useCallback(
     (containerRef, svg) => {
+      console.log(
+        `Rendering flow with mode: ${visualizationMode}, key: ${visualizationKey}`
+      );
+
       if (!flowData || flowData.length === 0) return;
+
+      // Clear any previous cleanup functions
+      animationCleanupFnsRef.current.forEach((cleanup) => {
+        if (typeof cleanup === 'function') {
+          try {
+            cleanup();
+          } catch (e) {
+            console.error('Error in animation cleanup:', e);
+          }
+        }
+      });
+      animationCleanupFnsRef.current = [];
 
       // Clear any existing content to ensure clean rendering
       svg.selectAll('*').remove();
@@ -205,29 +281,92 @@ const TransactionFlow = ({ flowData }) => {
         `Visualization mode: ${visualizationMode}, Circular connections: ${currentCircularConnectionPercentage}%`
       );
 
-      // Choose visualization based on selected mode
-      if (visualizationMode === 'tabular') {
-        console.log('Rendering tabular view');
-        renderTabularView();
-      } else {
-        // Default to Sankey diagram
-        console.log('Rendering Sankey view');
-        try {
-          renderSankeyDiagram();
-        } catch (error) {
-          console.error('Error rendering Sankey diagram:', error);
-          // Fall back to tabular visualization as it's simplest
-          svg.selectAll('*').remove();
+      // Mark render attempt time
+      const renderStartTime = Date.now();
+
+      try {
+        // Choose visualization based on selected mode
+        if (visualizationMode === 'tabular') {
+          console.log('Rendering tabular view');
           renderTabularView();
+          // Track successful render time
+          lastSuccessfulRenderTimeRef.current = Date.now();
+        } else {
+          // Default to Sankey diagram
+          console.log('Rendering Sankey view');
+          renderSankeyDiagram();
+          // Mark that we've successfully rendered a Sankey diagram
+          hasRenderedSankeyRef.current = true;
+          // Track successful render time
+          lastSuccessfulRenderTimeRef.current = Date.now();
+        }
+      } catch (error) {
+        console.error('Error rendering visualization:', error);
+
+        // Only fall back to tabular if the current attempt was for Sankey
+        if (visualizationMode === 'sankey') {
+          console.warn(
+            'Failed to render Sankey diagram, falling back to tabular view'
+          );
+          try {
+            // Clear SVG and try tabular as fallback
+            svg.selectAll('*').remove();
+            renderTabularView();
+            lastSuccessfulRenderTimeRef.current = Date.now();
+
+            // Switch to tabular mode but do it outside the current render cycle
+            setTimeout(() => {
+              setVisualizationMode('tabular');
+            }, 0);
+          } catch (fallbackError) {
+            console.error('Error rendering fallback view:', fallbackError);
+            // Last resort - show error message directly in SVG
+            renderErrorMessage(svg, 'Unable to display visualization');
+          }
+        } else {
+          // Show error for tabular view
+          renderErrorMessage(svg, 'Unable to display tabular view');
         }
       }
 
-      // Function to render Sankey diagram
+      // Function to render error message when all else fails
+      function renderErrorMessage(svg, message) {
+        svg.selectAll('*').remove();
+
+        // Add background
+        svg
+          .append('rect')
+          .attr('width', '100%')
+          .attr('height', '100%')
+          .attr('fill', '#121923')
+          .attr('rx', 8);
+
+        // Add error message
+        svg
+          .append('text')
+          .attr('x', containerRef.current.clientWidth / 2)
+          .attr('y', 150)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '14px')
+          .attr('fill', '#FF5555')
+          .text(message);
+
+        svg
+          .append('text')
+          .attr('x', containerRef.current.clientWidth / 2)
+          .attr('y', 180)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '12px')
+          .attr('fill', 'white')
+          .text('Try refreshing the page or switching visualization mode');
+      }
+
+      // Function to render Sankey diagram with performance optimizations
       function renderSankeyDiagram() {
-        // Create a Sankey generator
+        // Create a Sankey generator with optimized parameters for large datasets
         const sankeyGenerator = sankey()
           .nodeWidth(15)
-          .nodePadding(10)
+          .nodePadding(isLargeDataset ? 5 : 10) // Reduce padding for large datasets
           .extent([
             [50, 10],
             [width - 50, height - 30],
@@ -239,7 +378,7 @@ const TransactionFlow = ({ flowData }) => {
           links: links.map((d) => ({ ...d })),
         });
 
-        // Create link paths
+        // Create link paths with optimized event listeners
         const link = svg
           .append('g')
           .selectAll('.flow-link')
@@ -250,8 +389,34 @@ const TransactionFlow = ({ flowData }) => {
           .attr('stroke', 'url(#flow-gradient)')
           .attr('stroke-width', (d) => Math.max(1, d.width))
           .attr('fill', 'none')
-          .attr('opacity', 0.3)
-          .on('mouseover', function (event, d) {
+          .attr('opacity', 0.3);
+
+        // Create a single tooltip for better performance
+        let tooltip = svg
+          .append('g')
+          .attr('class', 'tooltip')
+          .attr('opacity', 0)
+          .style('pointer-events', 'none'); // Don't capture mouse events
+
+        tooltip
+          .append('rect')
+          .attr('rx', 3)
+          .attr('ry', 3)
+          .attr('fill', 'rgba(0, 0, 0, 0.7)')
+          .attr('stroke', 'rgba(247, 147, 26, 0.6)')
+          .attr('stroke-width', 0.5);
+
+        tooltip
+          .append('text')
+          .attr('fill', 'white')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .attr('font-size', '10px');
+
+        // Only add hover effects if the dataset is not too large
+        if (!isLargeDataset) {
+          // Create throttled mouseover handler
+          const throttledMouseOver = throttle(function (event, d) {
             d3.select(this)
               .transition()
               .duration(200)
@@ -260,36 +425,6 @@ const TransactionFlow = ({ flowData }) => {
 
             // Show tooltip
             const [x, y] = d3.pointer(event, containerRef.current);
-
-            let tooltip = svg.select('.tooltip');
-            if (tooltip.empty()) {
-              tooltip = svg
-                .append('g')
-                .attr('class', 'tooltip')
-                .attr('transform', `translate(${x}, ${y})`)
-                .attr('opacity', 0);
-
-              tooltip
-                .append('rect')
-                .attr('rx', 3)
-                .attr('ry', 3)
-                .attr('fill', 'rgba(0, 0, 0, 0.7)')
-                .attr('stroke', 'rgba(247, 147, 26, 0.6)')
-                .attr('stroke-width', 0.5);
-
-              tooltip
-                .append('text')
-                .attr('fill', 'white')
-                .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'middle')
-                .attr('font-size', '10px');
-
-              tooltip.transition().duration(200).attr('opacity', 1);
-            } else {
-              tooltip
-                .attr('transform', `translate(${x}, ${y})`)
-                .attr('opacity', 1);
-            }
 
             // Find original flow data
             const originalData = d.originalData || d;
@@ -310,61 +445,124 @@ const TransactionFlow = ({ flowData }) => {
               .attr('height', textBBox.height + 6)
               .attr('x', -textBBox.width / 2 - 5)
               .attr('y', -textBBox.height / 2 - 3);
-          })
-          .on('mouseout', function () {
+
+            // Position and show tooltip
+            tooltip
+              .attr('transform', `translate(${x}, ${y})`)
+              .transition()
+              .duration(200)
+              .attr('opacity', 1);
+          }, performanceSettings.mouseEventThrottle);
+
+          // Create throttled mouseout handler
+          const throttledMouseOut = throttle(function () {
             d3.select(this)
               .transition()
               .duration(300)
               .attr('opacity', 0.3)
               .attr('stroke-width', (d) => Math.max(1, d.width));
 
-            // Remove tooltip with fade
-            const existingTooltip = svg.select('.tooltip');
-            if (!existingTooltip.empty()) {
-              existingTooltip
-                .transition()
-                .duration(200)
-                .attr('opacity', 0)
-                .on('end', function () {
-                  d3.select(this).remove();
-                });
+            // Hide tooltip
+            tooltip.transition().duration(200).attr('opacity', 0);
+          }, performanceSettings.mouseEventThrottle);
+
+          // Add event listeners
+          link
+            .on('mouseover', throttledMouseOver)
+            .on('mouseout', throttledMouseOut);
+        }
+
+        // Add animated flow particles (with performance optimizations)
+        const totalLinks = sankeyData.links.length;
+        let particleGroupsAdded = 0;
+
+        // Process links in batches for smoother rendering
+        const processLinkBatch = (startIdx, batchSize) => {
+          const endIdx = Math.min(startIdx + batchSize, totalLinks);
+
+          for (let linkIdx = startIdx; linkIdx < endIdx; linkIdx++) {
+            const d = sankeyData.links[linkIdx];
+
+            // Skip links that are too small to show particles
+            if (d.width < performanceSettings.minLinkWidthForParticles)
+              continue;
+
+            // Get the path element for this link
+            const path = d3.select(link.nodes()[linkIdx]);
+            const pathNode = path.node();
+            if (!pathNode) continue; // Skip if path node is not available
+
+            const pathLength = pathNode.getTotalLength();
+
+            // Create particle group for this link
+            const particleGroup = svg
+              .append('g')
+              .attr('class', 'particles')
+              .attr('data-link-index', linkIdx);
+
+            // Optimize particle count based on link width
+            // More important (thicker) links get more particles
+            const adjustedParticleCount = Math.min(
+              performanceSettings.maxParticlesPerLink,
+              Math.max(1, Math.ceil(d.width / 10))
+            );
+
+            // Add particles with better spacing
+            for (let i = 0; i < adjustedParticleCount; i++) {
+              // Distribute particles evenly along the path
+              const offset = (i / adjustedParticleCount) * pathLength;
+
+              // Size particles based on link width
+              const particleSize = Math.min(1.5, Math.max(0.8, d.width / 30));
+
+              // Add randomness to color to create visual variation
+              const color =
+                i % 2 === 0
+                  ? Math.random() > 0.7
+                    ? '#F7931A'
+                    : '#F9A942'
+                  : Math.random() > 0.7
+                  ? '#3D8EF7'
+                  : '#54A0FF';
+
+              // Create the particle with proper color gradient
+              const circle = particleGroup
+                .append('circle')
+                .attr('r', particleSize)
+                .attr('fill', color)
+                .attr('opacity', 0.8);
+
+              // Add subtle delay between particle animations for smoother overall effect
+              setTimeout(() => {
+                const cleanupFn = animateParticle(
+                  circle,
+                  pathNode,
+                  offset,
+                  pathLength
+                );
+                // Store cleanup function on the DOM node for later access
+                circle.node().__cleanupFn = cleanupFn;
+              }, (linkIdx + i) * 20); // Stagger animations
             }
-          });
 
-        // Add animated flow particles
-        sankeyData.links.forEach((d) => {
-          // Skip links that are too small to show particles
-          if (d.width < 2) return;
-
-          // Calculate the number of particles based on the value, but limit for performance
-          const particleCount = Math.min(
-            3,
-            Math.max(1, Math.floor(d.value / 100))
-          );
-
-          // Get the path element for this link
-          const path = d3.select(link.nodes()[sankeyData.links.indexOf(d)]);
-          const pathNode = path.node();
-          const pathLength = pathNode.getTotalLength();
-
-          // Create particle group for this link
-          const particleGroup = svg.append('g').attr('class', 'particles');
-
-          // Add particles
-          for (let i = 0; i < particleCount; i++) {
-            const offset = (i / particleCount) * pathLength;
-
-            // Create the particle
-            particleGroup
-              .append('circle')
-              .attr('r', 1.5)
-              .attr('fill', 'white')
-              .attr('opacity', 0.7)
-              .call(animateParticle, pathNode, offset, pathLength);
+            particleGroupsAdded++;
           }
-        });
 
-        // Create node rectangles
+          // Process next batch if there are more links
+          if (endIdx < totalLinks && !isLargeDataset) {
+            setTimeout(() => processLinkBatch(endIdx, batchSize), 50);
+          }
+        };
+
+        // Start processing links in batches
+        // Adjust batch size based on total links for optimal performance
+        const batchSize = totalLinks < 20 ? totalLinks : 5;
+
+        if (!isLargeDataset) {
+          processLinkBatch(0, batchSize);
+        }
+
+        // Create node rectangles with optimized event handlers
         const node = svg
           .append('g')
           .selectAll('.flow-node')
@@ -383,8 +581,12 @@ const TransactionFlow = ({ flowData }) => {
           .attr('rx', 3)
           .attr('ry', 3)
           .attr('stroke-width', 1)
-          .attr('opacity', 0.7)
-          .on('mouseover', function (event, d) {
+          .attr('opacity', 0.7);
+
+        // Only add hover effects if the dataset is not too large
+        if (!isLargeDataset) {
+          // Create throttled mouseover handler for nodes
+          const throttledNodeMouseOver = throttle(function (event, d) {
             // Highlight this node
             d3.select(this)
               .transition()
@@ -392,7 +594,7 @@ const TransactionFlow = ({ flowData }) => {
               .attr('opacity', 1)
               .attr('stroke', 'white');
 
-            // Highlight associated links
+            // Highlight associated links - with optimized selector
             link
               .transition()
               .duration(200)
@@ -409,7 +611,7 @@ const TransactionFlow = ({ flowData }) => {
                 return Math.max(1, l.width);
               });
 
-            // Highlight connected nodes
+            // Highlight connected nodes - with optimized selector
             node
               .select('rect')
               .transition()
@@ -424,8 +626,10 @@ const TransactionFlow = ({ flowData }) => {
                 );
                 return isConnected || n.index === d.index ? 1 : 0.3;
               });
-          })
-          .on('mouseout', function () {
+          }, performanceSettings.mouseEventThrottle);
+
+          // Create throttled mouseout handler for nodes
+          const throttledNodeMouseOut = throttle(function () {
             // Reset all elements
             node
               .select('rect')
@@ -439,10 +643,22 @@ const TransactionFlow = ({ flowData }) => {
               .duration(300)
               .attr('opacity', 0.3)
               .attr('stroke-width', (d) => Math.max(1, d.width));
-          });
+          }, performanceSettings.mouseEventThrottle);
 
-        // Add node labels
+          // Add event listeners
+          node
+            .select('rect')
+            .on('mouseover', throttledNodeMouseOver)
+            .on('mouseout', throttledNodeMouseOut);
+        }
+
+        // Add node labels with performance optimization for large datasets
+        const labelNodes = isLargeDataset
+          ? sankeyData.nodes.slice(0, performanceSettings.maxNodeLabels)
+          : sankeyData.nodes;
+
         node
+          .filter((d, i) => labelNodes.some((n) => n.index === i))
           .append('text')
           .attr('x', (d) => (d.x0 < width / 2 ? d.x1 - d.x0 + 6 : -6))
           .attr('y', (d) => (d.y1 - d.y0) / 2)
@@ -452,6 +668,9 @@ const TransactionFlow = ({ flowData }) => {
           .attr('fill', 'white')
           .text((d) => d.id)
           .each(function (d) {
+            // Only do text truncation for smaller datasets
+            if (isLargeDataset) return;
+
             // Truncate text if too long
             const text = d3.select(this);
             let textLength = text.node().getComputedTextLength();
@@ -507,30 +726,70 @@ const TransactionFlow = ({ flowData }) => {
         }
       }
 
-      // Function to animate a particle along a path
+      // Enhance function to animate a particle along a path
       function animateParticle(circle, path, initialOffset, pathLength) {
-        // Amount of time (in ms) to make a complete journey
-        const duration = 3000 + Math.random() * 1000;
+        // Use more efficient animation duration from performance settings
+        const duration = performanceSettings.animationDuration;
 
-        function animate() {
-          // Progress from 0 to 1 based on current time
-          circle
-            .transition()
-            .duration(duration)
-            .attrTween('transform', function () {
-              return function (t) {
-                // Calculate position along the path
-                const pos = path.getPointAtLength(
-                  (initialOffset + t * pathLength) % pathLength
-                );
-                return `translate(${pos.x}, ${pos.y})`;
-              };
-            })
-            .on('end', animate); // Repeat animation
+        // Simplified animation path for better performance
+        if (performanceSettings.useSimplifiedAnimation) {
+          // Simple animation with fewer steps
+          function animateSimple() {
+            circle
+              .attr('opacity', 0.7)
+              .transition()
+              .duration(duration)
+              .ease(d3.easeLinear)
+              .attrTween('transform', function () {
+                return function (t) {
+                  const adjustedT = (t + initialOffset / pathLength) % 1;
+                  const pos = path.getPointAtLength(adjustedT * pathLength);
+                  return `translate(${pos.x}, ${pos.y})`;
+                };
+              })
+              .on('end', animateSimple);
+          }
+          animateSimple();
+          return;
         }
 
-        // Start the animation
-        animate();
+        // High-quality animation with RAF for smoother movement
+        let start = null;
+        let animationFrameId = null;
+
+        function step(timestamp) {
+          if (!start) start = timestamp;
+          const elapsed = timestamp - start;
+          const progress = (elapsed % duration) / duration;
+
+          // Calculate position along the path using the progress
+          const adjustedT = (progress + initialOffset / pathLength) % 1;
+          const pos = path.getPointAtLength(adjustedT * pathLength);
+
+          // Update particle position
+          circle
+            .attr('transform', `translate(${pos.x}, ${pos.y})`)
+            .attr('opacity', 0.8);
+
+          // Continue animation
+          animationFrameId = window.requestAnimationFrame(step);
+        }
+
+        // Start animation using requestAnimationFrame
+        animationFrameId = window.requestAnimationFrame(step);
+
+        // Register cleanup function
+        const cleanupFn = function () {
+          if (animationFrameId) {
+            window.cancelAnimationFrame(animationFrameId);
+          }
+        };
+
+        // Store cleanup in our ref array for component-level cleanup
+        animationCleanupFnsRef.current.push(cleanupFn);
+
+        // Return cleanup function for local use
+        return cleanupFn;
       }
 
       // Function to render a tabular view
@@ -760,21 +1019,119 @@ const TransactionFlow = ({ flowData }) => {
         }
       }
 
-      // Clean up function
+      // Clean up function (enhanced with better error handling)
       return () => {
-        // Remove any timers or other resources here
+        console.log('Running TransactionFlow cleanup');
+
+        try {
+          // Stop all ongoing animations to prevent memory leaks
+          svg.selectAll('.particles circle').interrupt();
+          svg.selectAll('*').interrupt();
+
+          // Clear all animation cleanup functions
+          animationCleanupFnsRef.current.forEach((cleanup) => {
+            if (typeof cleanup === 'function') {
+              try {
+                cleanup();
+              } catch (e) {
+                console.error('Error in animation cleanup:', e);
+              }
+            }
+          });
+
+          // Reset the array
+          animationCleanupFnsRef.current = [];
+        } catch (e) {
+          console.error('Error in TransactionFlow cleanup:', e);
+        }
       };
     },
-    [flowData, visualizationMode]
+    [
+      flowData,
+      visualizationMode,
+      visualizationKey,
+      performanceSettings,
+      isLargeDataset,
+      throttle,
+    ]
   );
 
-  // Memoized dependencies
+  // Make the component react to changes in the visualization mode
   const dependencies = useMemo(() => {
+    // Keep key in dependencies to force re-render when it changes
     return [flowData, visualizationMode, visualizationKey];
   }, [flowData, visualizationMode, visualizationKey]);
 
-  // Use our custom hook for D3 integration
+  // Use our custom hook for D3 integration with the correct dependencies
   const { containerRef } = useD3(renderFlow, dependencies);
+
+  // Add heartbeat to regularly check if Sankey diagram is still visible
+  useEffect(() => {
+    let heartbeatTimer = null;
+
+    // Check if Sankey diagram is still visible and rerender if needed
+    const checkSankeyVisibility = () => {
+      const sankeyContainer = containerRef.current;
+      if (!sankeyContainer) return;
+
+      const svgElement = sankeyContainer.querySelector('svg');
+      const sankeyElements =
+        svgElement && svgElement.querySelectorAll('.flow-link, .flow-node');
+
+      // If we should have a Sankey diagram but don't see it on the page...
+      if (
+        visualizationMode === 'sankey' &&
+        hasRenderedSankeyRef.current &&
+        sankeyElements &&
+        sankeyElements.length === 0 &&
+        lastSuccessfulRenderTimeRef.current &&
+        Date.now() - lastSuccessfulRenderTimeRef.current > 5000
+      ) {
+        console.log('Sankey diagram disappeared, forcing rerender...');
+        // Force a rerender by incrementing the visualization key
+        setVisualizationKey((prev) => prev + 1);
+      }
+    };
+
+    // Set up heartbeat check every 5 seconds
+    heartbeatTimer = setInterval(checkSankeyVisibility, 5000);
+
+    return () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+    };
+  }, [visualizationMode, containerRef]);
+
+  // Current visualization mode descriptive text
+  const currentModeText = visualizationMode === 'sankey' ? 'Sankey' : 'Table';
+
+  // Use React to display information about filtered links and visualization controls
+  const infoPanel = useMemo(
+    () => (
+      <div className='absolute top-2 right-2 flex flex-col items-end gap-2 z-10'>
+        {filteredLinkCount > 0 && visualizationMode === 'sankey' && (
+          <div className='bg-dark-blue/30 border border-lightning-blue/30 text-xs px-2 py-1 rounded text-satoshi-white'>
+            <span className='text-lightning-blue'>
+              {circularConnectionPercentage}%
+            </span>{' '}
+            circular connections filtered
+          </div>
+        )}
+        <button
+          onClick={toggleVisualizationMode}
+          className='bg-gradient-to-r from-bitcoin-orange to-lightning-blue text-satoshi-white text-xs px-3 py-1 rounded border border-bitcoin-orange/30 hover:opacity-90 transition-opacity'>
+          Switch to: {visualizationMode === 'sankey' ? 'Table' : 'Sankey'} View
+        </button>
+      </div>
+    ),
+    [
+      filteredLinkCount,
+      visualizationMode,
+      circularConnectionPercentage,
+      toggleVisualizationMode,
+    ]
+  );
 
   // Handle empty state
   if (!flowData || flowData.length === 0) {
@@ -787,38 +1144,18 @@ const TransactionFlow = ({ flowData }) => {
     );
   }
 
-  // Current visualization mode descriptive text
-  const currentModeText = visualizationMode === 'sankey' ? 'Sankey' : 'Table';
-
-  // Use React to display information about filtered links and visualization controls
-  const infoPanel = (
-    <div className='absolute top-2 right-2 flex flex-col items-end gap-2'>
-      {filteredLinkCount > 0 && visualizationMode === 'sankey' && (
-        <div className='bg-dark-blue/30 border border-lightning-blue/30 text-xs px-2 py-1 rounded text-satoshi-white'>
-          <span className='text-lightning-blue'>
-            {circularConnectionPercentage}%
-          </span>{' '}
-          circular connections filtered
-        </div>
-      )}
-      <button
-        onClick={toggleVisualizationMode}
-        className='bg-gradient-to-r from-bitcoin-orange to-lightning-blue text-satoshi-white text-xs px-3 py-1 rounded border border-bitcoin-orange/30 hover:opacity-90 transition-opacity'>
-        View: {currentModeText}
-      </button>
-    </div>
-  );
-
   return (
-    <div
-      key={`flow-${visualizationMode}-${visualizationKey}`}
-      ref={containerRef}
-      className='w-full p-2 relative overflow-hidden'
-      style={{ height: '400px' }}
-      role='presentation'
-      aria-label='Transaction flow visualization'>
+    <div className='relative'>
+      <div
+        key={`flow-${visualizationMode}-${visualizationKey}`}
+        ref={containerRef}
+        className='w-full p-2 relative overflow-hidden'
+        style={{ height: '400px' }}
+        role='presentation'
+        aria-label='Transaction flow visualization'>
+        {/* SVG will be inserted here by useD3 */}
+      </div>
       {infoPanel}
-      {/* SVG will be inserted here by useD3 */}
     </div>
   );
 };
