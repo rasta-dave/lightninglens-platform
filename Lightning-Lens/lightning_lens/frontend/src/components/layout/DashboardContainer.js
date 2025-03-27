@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSimulation } from '../../contexts/SimulationContext';
 import NetworkHealthDashboard from '../NetworkHealthDashboard';
 import TimeSeriesAnalysis from '../TimeSeriesAnalysis';
@@ -10,6 +10,18 @@ import TransactionFlow from '../visualizations/TransactionFlow';
 
 const DashboardContainer = ({ showPredictionsTab }) => {
   const { nodes, links, transactions, flowData, predictions } = useSimulation();
+  const mlSectionRef = useRef(null);
+
+  // Scroll to ML section when it becomes visible
+  useEffect(() => {
+    if (showPredictionsTab && mlSectionRef.current) {
+      // Scroll to the ML section with smooth animation
+      mlSectionRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [showPredictionsTab]);
 
   if (nodes.length === 0) {
     return (
@@ -26,6 +38,34 @@ const DashboardContainer = ({ showPredictionsTab }) => {
 
   return (
     <>
+      {/* ML Predictions Section - Placed at the top when active */}
+      {showPredictionsTab && (
+        <div
+          ref={mlSectionRef}
+          id='ml-analytics-section'
+          className='container mx-auto mb-6'>
+          <div className='dashboard-card'>
+            <div className='flex items-center mb-4'>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                className='h-6 w-6 mr-2 text-lightning-purple'
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+                />
+              </svg>
+              <h2 className='dashboard-header'>Channel Balance Predictions</h2>
+            </div>
+            <PredictionAnalysis predictions={predictions} />
+          </div>
+        </div>
+      )}
+
       {/* Network Health Dashboard */}
       <div className='container mx-auto mb-6'>
         <div className='dashboard-card'>
@@ -58,31 +98,6 @@ const DashboardContainer = ({ showPredictionsTab }) => {
               links={links}
               predictions={predictions}
             />
-          </div>
-        </div>
-      )}
-
-      {/* ML Predictions Section */}
-      {showPredictionsTab && (
-        <div className='container mx-auto mb-6'>
-          <div className='dashboard-card'>
-            <div className='flex items-center mb-4'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-6 w-6 mr-2 text-lightning-purple'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
-                />
-              </svg>
-              <h2 className='dashboard-header'>Channel Balance Predictions</h2>
-            </div>
-            <PredictionAnalysis predictions={predictions} />
           </div>
         </div>
       )}

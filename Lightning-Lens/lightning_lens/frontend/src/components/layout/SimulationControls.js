@@ -19,6 +19,16 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
     setShowSimulationList(!showSimulationList);
   };
 
+  const handleMLAnalyticsClick = () => {
+    // Toggle ML Analytics visibility
+    setShowPredictionsTab(!showPredictionsTab);
+
+    // If turning on ML Analytics, scroll to top of page as well
+    if (!showPredictionsTab) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className='container mx-auto p-4 mb-4 bg-node-background shadow-lightning-glow rounded-lg mt-4 border border-lightning-blue border-opacity-20'>
       <div className='flex justify-between items-center flex-wrap'>
@@ -50,7 +60,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
           </p>
         </div>
 
-        <div className='flex space-x-2 mt-2 sm:mt-0'>
+        <div className='flex flex-wrap gap-2 mt-2 sm:mt-0'>
           <button
             onClick={resetSimulation}
             className='px-4 py-2 bg-gradient-to-r from-bitcoin-orange to-bitcoin-orange/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-bitcoin-orange/30'>
@@ -116,17 +126,18 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
             </span>
           </button>
 
+          {/* ML Analytics Button - Made more prominent */}
           <button
-            onClick={() => setShowPredictionsTab(!showPredictionsTab)}
-            className={`px-4 py-2 ${
+            onClick={handleMLAnalyticsClick}
+            className={`relative px-4 py-2 ${
               showPredictionsTab
-                ? 'bg-gradient-to-r from-bitcoin-orange to-lightning-blue border-lightning-blue/30'
-                : 'bg-gradient-to-r from-lightning-blue to-bitcoin-orange border-bitcoin-orange/30'
-            } hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border`}>
-            <span className='flex items-center'>
+                ? 'bg-gradient-to-r from-purple-600 to-blue-600 border-purple-500/50 ring-2 ring-purple-400/30'
+                : 'bg-gradient-to-r from-purple-500 to-blue-500 border-purple-400/30'
+            } hover:opacity-90 text-satoshi-white rounded-lg transition-all duration-200 shadow-lightning-glow focus:outline-none border min-w-[180px]`}>
+            <span className='flex items-center justify-center'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
-                className='h-4 w-4 mr-1'
+                className='h-5 w-5 mr-2'
                 fill='none'
                 viewBox='0 0 24 24'
                 stroke='currentColor'>
@@ -139,6 +150,13 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
               </svg>
               {showPredictionsTab ? 'Hide ML Analytics' : 'Show ML Analytics'}
             </span>
+
+            {/* Helper tooltip */}
+            {!showPredictionsTab && (
+              <span className='absolute top-full left-1/2 transform -translate-x-1/2 mt-1 whitespace-nowrap text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded opacity-80'>
+                Displays at the top of the page
+              </span>
+            )}
           </button>
         </div>
       </div>
