@@ -6,7 +6,7 @@ import RouteRecommendations from '../RouteRecommendations';
 import PredictionAnalysis from '../PredictionAnalysis';
 import TransactionList from '../TransactionList';
 import NetworkGraph from '../improved/NetworkGraph';
-import TransactionFlow from '../improved/TransactionFlow';
+import TransactionFlow from '../visualizations/TransactionFlow';
 
 const DashboardContainer = ({ showPredictionsTab }) => {
   const { nodes, links, transactions, flowData, predictions } = useSimulation();

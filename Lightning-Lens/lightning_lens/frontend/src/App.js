@@ -4,29 +4,43 @@ import {
   useWebSocketContext,
 } from './contexts/WebSocketContext';
 import { SimulationProvider } from './contexts/SimulationContext';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Header from './components/layout/Header';
 import SimulationControls from './components/layout/SimulationControls';
 import NewSimulationNotification from './components/layout/NewSimulationNotification';
 import LoadingOverlay from './components/layout/LoadingOverlay';
 import ConnectionStatus from './components/layout/ConnectionStatus';
 import DashboardContainer from './components/layout/DashboardContainer';
+import Test from './components/Test';
 
 // Main App Component
 function App() {
   const [showPredictionsTab, setShowPredictionsTab] = useState(false);
 
   return (
-    <div className='min-h-screen bg-gray-900 text-gray-100'>
-      <Header />
-      <NewSimulationNotification />
-      <LoadingOverlay />
-      <SimulationControls
-        showPredictionsTab={showPredictionsTab}
-        setShowPredictionsTab={setShowPredictionsTab}
-      />
-      <DashboardContainer showPredictionsTab={showPredictionsTab} />
-      <ConnectionStatus />
-    </div>
+    <Router>
+      <div className='min-h-screen bg-gray-900 text-gray-100'>
+        <Routes>
+          <Route path='/test' element={<Test />} />
+          <Route
+            path='/'
+            element={
+              <>
+                <Header />
+                <NewSimulationNotification />
+                <LoadingOverlay />
+                <SimulationControls
+                  showPredictionsTab={showPredictionsTab}
+                  setShowPredictionsTab={setShowPredictionsTab}
+                />
+                <DashboardContainer showPredictionsTab={showPredictionsTab} />
+                <ConnectionStatus />
+              </>
+            }
+          />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
