@@ -336,7 +336,32 @@ function broadcastTransactions() {
 
   // If we've sent all transactions, stop sending more
   if (lastSentIndex >= currentTransactions.length - 1) {
-    // Instead of sending the last transaction again, just return
+    // Send a status update with total transactions periodically
+    const statusMessage = JSON.stringify({
+      type: 'transaction_status',
+      totalTransactions: currentTransactions.length,
+      currentPosition: lastSentIndex + 1,
+      isComplete: true,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Track clients to remove from map if they're no longer connected
+    const deadClients = [];
+
+    clients.forEach((client, clientId) => {
+      if (!safeSend(client, statusMessage)) {
+        deadClients.push(clientId);
+      }
+    });
+
+    // Remove dead clients from the map
+    if (deadClients.length > 0) {
+      console.log(`Removing ${deadClients.length} dead clients`);
+      deadClients.forEach((clientId) => {
+        clients.delete(clientId);
+      });
+    }
+
     return;
   }
 
@@ -1240,15 +1265,21 @@ function sendInitialData(client) {
       `Extracted ${nodes.length} nodes and ${links.length} links from transactions`
     );
 
+    // Always send ALL transactions for playback functionality
+    // This is important for the transaction playback feature to work properly
+    console.log(
+      `Sending all ${currentTransactions.length} transactions for playback functionality`
+    );
+
     // Prepare the message
     const message = JSON.stringify({
       type: 'transactions',
-      transactions: currentTransactions.slice(-50), // Only send recent transactions
+      transactions: currentTransactions, // Send ALL transactions, not just the last 50
       nodes: nodes,
       links: links,
       flowData: flowData,
       totalTransactions: currentTransactions.length,
-      currentPosition: Math.min(currentTransactions.length, 50),
+      currentPosition: currentTransactions.length, // Position is at the end initially
       timestamp: new Date().toISOString(),
     });
 

@@ -30,6 +30,13 @@ export const SimulationProvider = ({ children }) => {
   const [predictionInfo, setPredictionInfo] = useState(null);
   const [isPredictionsLoading, setIsPredictionsLoading] = useState(false);
 
+  // Transaction playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1); // Transactions per second
+  const playbackTimeoutRef = useRef(null);
+  const allTransactionsRef = useRef([]);
+
   // Ref to track prediction data requests and avoid redundant requests
   const predictionRequestTimeoutRef = useRef(null);
   const lastPredictionRequestTimeRef = useRef(0);
@@ -51,6 +58,10 @@ export const SimulationProvider = ({ children }) => {
         `Attempting to switch to simulation: ${filename}, user selected: ${isUserSelected}`
       );
       setIsLoading(true);
+      // Pause any active playback
+      if (isPlaying) {
+        pauseTransactions();
+      }
       sendMessage({
         type: 'switch_simulation',
         filename,
@@ -62,15 +73,101 @@ export const SimulationProvider = ({ children }) => {
         console.log(`Set user selected file to: ${filename}`);
       }
     },
-    [sendMessage]
+    [sendMessage, isPlaying]
   );
 
   // Reset current simulation
   const resetSimulation = useCallback(() => {
     console.log('Resetting simulation');
     setIsLoading(true);
+    // Pause any active playback and reset index
+    if (isPlaying) {
+      pauseTransactions();
+    }
+    setPlaybackIndex(0);
     sendMessage({ type: 'reset_simulation' });
-  }, [sendMessage]);
+  }, [sendMessage, isPlaying]);
+
+  // Play transactions in real-time
+  const playTransactions = useCallback(() => {
+    // Only start if we have transactions and we're not already playing
+    if (allTransactionsRef.current.length > 0 && !isPlaying) {
+      console.log('Starting transaction playback');
+
+      // Reset to beginning if we're at the end
+      if (playbackIndex >= allTransactionsRef.current.length) {
+        setPlaybackIndex(0);
+      }
+
+      setIsPlaying(true);
+    } else {
+      console.log(
+        'Cannot start playback: No transactions available or already playing'
+      );
+    }
+  }, [isPlaying, playbackIndex]);
+
+  // Pause transaction playback
+  const pauseTransactions = useCallback(() => {
+    if (isPlaying) {
+      console.log('Pausing transaction playback');
+      setIsPlaying(false);
+
+      // Clear any pending timeout
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+        playbackTimeoutRef.current = null;
+      }
+    }
+  }, [isPlaying]);
+
+  // Set playback speed (transactions per second)
+  const changePlaybackSpeed = useCallback((speed) => {
+    if (speed > 0) {
+      console.log(`Setting playback speed to ${speed} tx/sec`);
+      setPlaybackSpeed(speed);
+    }
+  }, []);
+
+  // Handle transaction playback
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    // Clear any existing timeout
+    if (playbackTimeoutRef.current) {
+      clearTimeout(playbackTimeoutRef.current);
+    }
+
+    const allTx = allTransactionsRef.current;
+
+    // Check if we've reached the end
+    if (playbackIndex >= allTx.length) {
+      console.log('Playback reached the end, pausing');
+      setIsPlaying(false);
+      return;
+    }
+
+    // Show only transactions up to the current index
+    const visibleTx = allTx.slice(0, playbackIndex + 1);
+
+    // Update the transaction display with the partial set
+    setTransactions(visibleTx.slice(-50)); // Keep last 50 for performance
+    setLatestTransaction(visibleTx[visibleTx.length - 1]);
+    setCurrentPosition(playbackIndex + 1);
+
+    // Schedule the next transaction
+    const intervalMs = 1000 / playbackSpeed;
+    playbackTimeoutRef.current = setTimeout(() => {
+      setPlaybackIndex((prev) => prev + 1);
+    }, intervalMs);
+
+    // Cleanup function
+    return () => {
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+      }
+    };
+  }, [isPlaying, playbackIndex, playbackSpeed]);
 
   // Request prediction data with debouncing and caching
   const requestPredictionData = useCallback(() => {
@@ -191,7 +288,17 @@ export const SimulationProvider = ({ children }) => {
 
         if (data.transactions && data.transactions.length > 0) {
           console.log(`Processing ${data.transactions.length} transactions`);
-          setTransactions(data.transactions.slice(-50)); // Keep the 50 most recent
+
+          // Store all transactions for playback
+          allTransactionsRef.current = data.transactions;
+
+          // If not in playback mode, show all transactions
+          if (!isPlaying) {
+            setTransactions(data.transactions.slice(-50)); // Keep the 50 most recent
+          }
+
+          // Reset playback index on new data
+          setPlaybackIndex(0);
         }
 
         // Delay stopping the loading indicator to ensure we see it
@@ -296,6 +403,10 @@ export const SimulationProvider = ({ children }) => {
       if (predictionRequestTimeoutRef.current) {
         clearTimeout(predictionRequestTimeoutRef.current);
       }
+
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+      }
     };
   }, [
     registerMessageHandler,
@@ -303,6 +414,7 @@ export const SimulationProvider = ({ children }) => {
     sendMessage,
     userSelectedFile,
     requestPredictionData,
+    isPlaying,
   ]);
 
   // When a new simulation notification is received, update the simulation list
@@ -350,6 +462,13 @@ export const SimulationProvider = ({ children }) => {
         clearNotification,
         resetSimulation,
         requestPredictionData,
+        // Playback related
+        isPlaying,
+        playbackIndex,
+        playbackSpeed,
+        playTransactions,
+        pauseTransactions,
+        changePlaybackSpeed,
       }}>
       {children}
     </SimulationContext.Provider>
