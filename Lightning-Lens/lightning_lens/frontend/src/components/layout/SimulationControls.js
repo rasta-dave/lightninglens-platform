@@ -48,6 +48,7 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
   }, [simulationInfo, allSimulations, switchToSimulation]);
 
   const handleSelectFile = (filename) => {
+    console.log('User selected simulation file:', filename);
     switchToSimulation(filename, true);
     setShowDropdown(false);
   };
@@ -60,6 +61,13 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
     }
     setShowPredictionsTab(!showPredictionsTab);
   };
+
+  // Log available simulations
+  useEffect(() => {
+    if (allSimulations && allSimulations.length > 0) {
+      console.log('Available simulations:', allSimulations);
+    }
+  }, [allSimulations]);
 
   return (
     <div className='bg-gray-800 shadow-md mb-6 sticky top-0 z-10'>

@@ -272,13 +272,33 @@ async function hasActualData(filePath) {
 // Read transactions from a CSV file
 function readTransactionsFromCSV(filePath) {
   return new Promise((resolve, reject) => {
+    console.log(`Starting to read transactions from CSV: ${filePath}`);
     const transactions = [];
 
     fs.createReadStream(filePath)
       .pipe(csv())
-      .on('data', (data) => transactions.push(data))
-      .on('end', () => resolve(transactions))
-      .on('error', (error) => reject(error));
+      .on('data', (data) => {
+        // Add to transactions array
+        transactions.push(data);
+
+        // Log sample data (just the first few transactions)
+        if (transactions.length <= 3) {
+          console.log(`Transaction ${transactions.length}:`, data);
+        }
+      })
+      .on('end', () => {
+        console.log(
+          `Finished reading ${transactions.length} transactions from CSV`
+        );
+        if (transactions.length > 0) {
+          console.log(`CSV Fields:`, Object.keys(transactions[0]));
+        }
+        resolve(transactions);
+      })
+      .on('error', (error) => {
+        console.error(`Error reading CSV file ${filePath}:`, error);
+        reject(error);
+      });
   });
 }
 
@@ -370,7 +390,9 @@ async function loadSpecificSimulationFile(
 ) {
   // Don't reload the same file unless forced
   if (filePath === latestSimulationFile && currentTransactions.length > 0) {
-    console.log('Already using this simulation file');
+    console.log(`Already using this simulation file: ${filePath}`);
+    console.log(`latestSimulationFile: ${latestSimulationFile}`);
+    console.log(`Current transactions count: ${currentTransactions.length}`);
     return;
   }
 
@@ -379,6 +401,11 @@ async function loadSpecificSimulationFile(
     return;
   }
 
+  console.log(`Starting to load simulation file: ${filePath}`);
+  console.log(
+    `Current latestSimulationFile: ${latestSimulationFile || 'none'}`
+  );
+
   isLoadingFile = true;
 
   try {
@@ -386,6 +413,8 @@ async function loadSpecificSimulationFile(
 
     // Check if the file has actual transaction data
     const hasData = await hasActualData(filePath);
+    console.log(`File ${filePath} has data: ${hasData}`);
+
     if (!hasData) {
       console.log(
         `File ${path.basename(
@@ -396,7 +425,9 @@ async function loadSpecificSimulationFile(
       return;
     }
 
+    console.log(`Setting latestSimulationFile to: ${filePath}`);
     latestSimulationFile = filePath;
+    console.log(`Reading transactions from CSV: ${filePath}`);
     currentTransactions = await readTransactionsFromCSV(filePath);
     lastSentIndex = -1; // Reset index when loading new file
 
@@ -591,6 +622,12 @@ wss.on('connection', (ws, req) => {
           sendAllSimulations(ws);
           break;
         case 'switch_simulation':
+          console.log(
+            `Client ${clientId} requested switch to simulation:`,
+            data.filename
+          );
+          console.log(`isUserSelected:`, data.isUserSelected);
+
           // Track if this was a user-initiated selection
           if (data.isUserSelected) {
             clientSelections.set(clientId, data.filename);
@@ -890,6 +927,7 @@ function sendAllSimulations(client) {
 // Helper function to switch to a specific simulation
 function switchToSimulation(filename, client) {
   if (!filename) {
+    console.error('No filename provided to switchToSimulation');
     safeSend(
       client,
       JSON.stringify({
@@ -901,11 +939,17 @@ function switchToSimulation(filename, client) {
     return;
   }
 
+  console.log(`Attempting to switch to simulation: ${filename}`);
   const filePath = path.join(DATA_DIR, filename);
 
+  console.log(`Resolved file path: ${filePath}`);
+  console.log(`File exists check: ${fs.existsSync(filePath)}`);
+
   if (fs.existsSync(filePath)) {
+    console.log(`Loading simulation file: ${filePath}`);
     loadSpecificSimulationFile(filePath)
       .then(() => {
+        console.log(`Successfully loaded simulation file: ${filename}`);
         // Broadcast to all clients without checking locks
         broadcast(
           JSON.stringify({
@@ -914,6 +958,13 @@ function switchToSimulation(filename, client) {
             success: true,
           })
         );
+
+        // Send the initial network data to the client that requested the switch
+        console.log('Sending initial network data after simulation switch');
+        sendInitialData(client);
+
+        // Also broadcast simulation info to ensure UI updates
+        sendSimulationInfo(client);
       })
       .catch((error) => {
         console.error(`Error switching to simulation ${filename}:`, error);
@@ -928,6 +979,7 @@ function switchToSimulation(filename, client) {
         );
       });
   } else {
+    console.error(`Simulation file not found: ${filePath}`);
     safeSend(
       client,
       JSON.stringify({
@@ -1048,22 +1100,33 @@ process.on('SIGINT', () => {
 function extractNetworkData(transactions) {
   if (!transactions || transactions.length === 0) {
     console.log('No transactions to extract network data from');
-    return { nodes: [], links: [] };
+    return { nodes: [], links: [], flowData: [] };
   }
+
+  console.log(
+    `Extracting network data from ${transactions.length} transactions`
+  );
+  console.log(`Sample transaction:`, JSON.stringify(transactions[0]));
 
   const uniqueNodes = new Map();
   const uniqueLinks = new Map();
   const nodeTransactions = new Map();
 
   // Process transactions to build nodes and links
+  let validTransactions = 0;
+  let skippedTransactions = 0;
+
   transactions.forEach((tx, index) => {
     const source = tx.sender;
     const target = tx.receiver;
 
     // Skip if sender or receiver is missing
     if (!source || !target) {
+      skippedTransactions++;
       return;
     }
+
+    validTransactions++;
 
     // Process nodes
     if (!uniqueNodes.has(source)) {
@@ -1114,6 +1177,13 @@ function extractNetworkData(transactions) {
     uniqueLinks.set(linkKey, link);
   });
 
+  console.log(
+    `Processed ${validTransactions} valid transactions, skipped ${skippedTransactions} invalid transactions`
+  );
+  console.log(
+    `Created ${uniqueNodes.size} nodes and ${uniqueLinks.size} links`
+  );
+
   // Prepare flow data for Sankey diagram
   const flowData = [...uniqueLinks.values()].map((link) => ({
     source: link.source,
@@ -1131,21 +1201,47 @@ function extractNetworkData(transactions) {
 
 // Send initial data to client including nodes and links
 function sendInitialData(client) {
-  if (!latestSimulationFile || currentTransactions.length === 0) {
-    console.log('No simulation data to send');
+  if (!client || client.readyState !== WebSocket.OPEN) {
+    console.error('Cannot send initial data: Client is not connected');
     return;
   }
 
-  // Extract network data from transactions
-  const { nodes, links, flowData } = extractNetworkData(currentTransactions);
+  if (!latestSimulationFile) {
+    console.log('No simulation file loaded, cannot send initial data');
+    return;
+  }
+
+  if (!currentTransactions || currentTransactions.length === 0) {
+    console.log('No transactions available, cannot send network data');
+    safeSend(
+      client,
+      JSON.stringify({
+        type: 'transactions',
+        transactions: [],
+        nodes: [],
+        links: [],
+        flowData: [],
+        totalTransactions: 0,
+        currentPosition: 0,
+        error: 'No transaction data available',
+      })
+    );
+    return;
+  }
+
   console.log(
-    `Extracted ${nodes.length} nodes and ${links.length} links from transactions`
+    `Preparing to send initial data for ${currentTransactions.length} transactions`
   );
 
-  // Send comprehensive data to client
-  safeSend(
-    client,
-    JSON.stringify({
+  try {
+    // Extract network data from transactions
+    const { nodes, links, flowData } = extractNetworkData(currentTransactions);
+    console.log(
+      `Extracted ${nodes.length} nodes and ${links.length} links from transactions`
+    );
+
+    // Prepare the message
+    const message = JSON.stringify({
       type: 'transactions',
       transactions: currentTransactions.slice(-50), // Only send recent transactions
       nodes: nodes,
@@ -1153,6 +1249,31 @@ function sendInitialData(client) {
       flowData: flowData,
       totalTransactions: currentTransactions.length,
       currentPosition: Math.min(currentTransactions.length, 50),
-    })
-  );
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`Sending initial data message (${message.length} bytes)`);
+
+    // Send the data
+    const success = safeSend(client, message);
+
+    if (success) {
+      console.log('Successfully sent initial network data to client');
+    } else {
+      console.error('Failed to send initial network data to client');
+    }
+  } catch (error) {
+    console.error('Error preparing or sending initial data:', error);
+
+    // Send error response
+    safeSend(
+      client,
+      JSON.stringify({
+        type: 'transactions',
+        error: 'Error processing network data',
+        errorDetails: error.message,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
 }

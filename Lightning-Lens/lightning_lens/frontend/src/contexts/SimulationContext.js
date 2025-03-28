@@ -47,7 +47,9 @@ export const SimulationProvider = ({ children }) => {
   // Switch to a specific simulation
   const switchToSimulation = useCallback(
     (filename, isUserSelected = false) => {
-      console.log(`Switching to simulation: ${filename}`);
+      console.log(
+        `Attempting to switch to simulation: ${filename}, user selected: ${isUserSelected}`
+      );
       setIsLoading(true);
       sendMessage({
         type: 'switch_simulation',
@@ -57,6 +59,7 @@ export const SimulationProvider = ({ children }) => {
 
       if (isUserSelected) {
         setUserSelectedFile(filename);
+        console.log(`Set user selected file to: ${filename}`);
       }
     },
     [sendMessage]
@@ -211,7 +214,7 @@ export const SimulationProvider = ({ children }) => {
       }),
 
       registerMessageHandler('simulation_switched', (data) => {
-        console.log('Simulation switched:', data);
+        console.log('Simulation switched response:', data);
         if (data.success) {
           // Clear notification since we've acknowledged it
           setNewSimulationNotification(null);
@@ -220,6 +223,9 @@ export const SimulationProvider = ({ children }) => {
           setTimeout(() => {
             setIsLoading(false);
           }, 300);
+        } else {
+          console.error('Failed to switch simulation:', data.error);
+          setIsLoading(false);
         }
       }),
 
