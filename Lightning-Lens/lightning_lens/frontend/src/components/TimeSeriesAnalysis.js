@@ -7,6 +7,13 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
   const svgRef = useRef(null);
   const [chartInitialized, setChartInitialized] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState('success_rate');
+  // Store fixed y-axis ranges that persist between renders
+  const [yAxisScales, setYAxisScales] = useState({
+    success_rate: [0, 100],
+    active_nodes: [0, 20],
+    avg_tx_value: [0, 2000],
+    tx_volume: [0, 10],
+  });
 
   // Process transactions into time series data
   useEffect(() => {
@@ -117,13 +124,13 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
       gradient
         .append('stop')
         .attr('offset', '0%')
-        .attr('stop-color', '#3b82f6')
+        .attr('stop-color', '#3d8ef7')
         .attr('stop-opacity', 0.8);
 
       gradient
         .append('stop')
         .attr('offset', '100%')
-        .attr('stop-color', '#3b82f6')
+        .attr('stop-color', '#3d8ef7')
         .attr('stop-opacity', 0.1);
 
       // Add groups for various chart elements
@@ -188,13 +195,39 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
       .domain([0, d3.max(timeSeriesData, (d) => d.timestamp)])
       .range([0, width]);
 
-    // Get the minimum and maximum y values with padding
-    const yMin = d3.min(timeSeriesData, (d) => d[selectedMetric]) * 0.9;
-    const yMax = d3.max(timeSeriesData, (d) => d[selectedMetric]) * 1.1;
+    // Define fixed y-axis ranges for each metric
+    const updateYAxisIfNeeded = () => {
+      const newScales = { ...yAxisScales };
+      let scalesChanged = false;
 
+      // For each metric, check if we need to expand the scale (but never shrink it)
+      Object.keys(newScales).forEach((metric) => {
+        const maxValue = d3.max(timeSeriesData, (d) => d[metric]) || 0;
+        const currentMax = newScales[metric][1];
+
+        // If current data exceeds 80% of our scale, increase the scale
+        if (maxValue > currentMax * 0.8) {
+          const newMax = Math.ceil((maxValue * 1.5) / 100) * 100; // Round up to nearest 100
+          newScales[metric][1] = newMax;
+          scalesChanged = true;
+        }
+      });
+
+      // Only update state if scales changed
+      if (scalesChanged) {
+        setYAxisScales(newScales);
+      }
+
+      return newScales;
+    };
+
+    // Get updated scales (this may update the state if needed)
+    const currentScales = updateYAxisIfNeeded();
+
+    // Use the fixed range for the selected metric
     const y = d3
       .scaleLinear()
-      .domain([yMin > 0 ? 0 : yMin, yMax])
+      .domain(currentScales[selectedMetric])
       .range([height, 0]);
 
     // Update grid lines
@@ -219,7 +252,21 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
 
     svg
       .select('.y-axis')
-      .call(d3.axisLeft(y))
+      .call(
+        d3
+          .axisLeft(y)
+          .tickSize(-5)
+          .ticks(5)
+          .tickFormat((d) => {
+            if (selectedMetric === 'success_rate') {
+              return `${d}%`;
+            } else if (selectedMetric === 'avg_tx_value') {
+              return d >= 1000 ? `${d / 1000}k` : d;
+            } else {
+              return d;
+            }
+          })
+      )
       .attr('color', '#9ca3af')
       .selectAll('text')
       .style('fill', '#d1d5db');
@@ -270,7 +317,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
       .attr('class', 'line-path')
       .merge(path)
       .attr('fill', 'none')
-      .attr('stroke', '#3b82f6')
+      .attr('stroke', '#3d8ef7')
       .attr('stroke-width', 3)
       .attr('stroke-linecap', 'round')
       .attr('stroke-linejoin', 'round')
@@ -291,7 +338,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
       .attr('cx', (d) => x(d.timestamp))
       .attr('cy', (d) => y(d[selectedMetric]))
       .attr('r', 0)
-      .attr('fill', '#3b82f6')
+      .attr('fill', '#3d8ef7')
       .attr('stroke', '#1f2937')
       .attr('stroke-width', 2)
       .merge(dots)
@@ -355,19 +402,26 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
           .transition()
           .duration(100)
           .attr('r', 4)
-          .attr('fill', '#3b82f6');
+          .attr('fill', '#3d8ef7');
 
         mergedTooltip.transition().duration(100).style('opacity', 0);
       });
   }, [timeSeriesData, selectedMetric, chartInitialized]);
 
+  // Handle metric change
+  const handleMetricChange = (metric) => {
+    setSelectedMetric(metric);
+    // No need to reset scales here, we maintain them across metric changes
+  };
+
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       if (chartInitialized) {
-        // Reset chart on window resize
+        // Reset chart on window resize, but keep scale settings
         d3.select(chartRef.current).selectAll('*').remove();
         setChartInitialized(false);
+        // We deliberately do NOT reset yAxisScales here to maintain consistency
       }
     };
 
@@ -384,17 +438,12 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
     };
   }, []);
 
-  // Handle metric change
-  const handleMetricChange = (metric) => {
-    setSelectedMetric(metric);
-  };
-
   return (
     <div className='mb-6'>
       <div className='flex items-center mb-4'>
         <svg
           xmlns='http://www.w3.org/2000/svg'
-          className='h-6 w-6 mr-2 text-indigo-400'
+          className='h-6 w-6 mr-2 text-lightning-blue'
           fill='none'
           viewBox='0 0 24 24'
           stroke='currentColor'>
@@ -405,7 +454,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
             d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
           />
         </svg>
-        <h2 className='text-xl font-semibold text-indigo-300'>
+        <h2 className='text-xl font-semibold text-satoshi-white'>
           Time Series Analysis
         </h2>
       </div>
@@ -415,7 +464,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
           onClick={() => handleMetricChange('success_rate')}
           className={`px-3 py-1 rounded-md text-sm ${
             selectedMetric === 'success_rate'
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-lightning-blue text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}>
           Success Rate
@@ -424,7 +473,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
           onClick={() => handleMetricChange('active_nodes')}
           className={`px-3 py-1 rounded-md text-sm ${
             selectedMetric === 'active_nodes'
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-lightning-blue text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}>
           Active Nodes
@@ -433,7 +482,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
           onClick={() => handleMetricChange('avg_tx_value')}
           className={`px-3 py-1 rounded-md text-sm ${
             selectedMetric === 'avg_tx_value'
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-lightning-blue text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}>
           Avg Transaction Value
@@ -442,7 +491,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
           onClick={() => handleMetricChange('tx_volume')}
           className={`px-3 py-1 rounded-md text-sm ${
             selectedMetric === 'tx_volume'
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-lightning-blue text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}>
           Transaction Volume
@@ -452,7 +501,7 @@ const TimeSeriesAnalysis = ({ transactions = [], nodes = [], links = [] }) => {
       {timeSeriesData.length < 2 ? (
         <div className='flex items-center justify-center h-48 bg-gray-800 rounded-lg border border-gray-700 text-gray-400'>
           <svg
-            className='animate-spin -ml-1 mr-3 h-5 w-5 text-indigo-500'
+            className='animate-spin -ml-1 mr-3 h-5 w-5 text-lightning-blue'
             xmlns='http://www.w3.org/2000/svg'
             fill='none'
             viewBox='0 0 24 24'>
