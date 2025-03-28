@@ -121,6 +121,15 @@ export const SimulationProvider = ({ children }) => {
     }
   }, [isPlaying]);
 
+  // Toggle between play and pause
+  const togglePlayTransactions = useCallback(() => {
+    if (isPlaying) {
+      pauseTransactions();
+    } else {
+      playTransactions();
+    }
+  }, [isPlaying, pauseTransactions, playTransactions]);
+
   // Set playback speed (transactions per second)
   const changePlaybackSpeed = useCallback((speed) => {
     if (speed > 0) {
@@ -150,13 +159,44 @@ export const SimulationProvider = ({ children }) => {
     // Show only transactions up to the current index
     const visibleTx = allTx.slice(0, playbackIndex + 1);
 
+    console.log(
+      `Playback progress: ${playbackIndex + 1}/${allTx.length} (${(
+        ((playbackIndex + 1) / allTx.length) *
+        100
+      ).toFixed(1)}%)`
+    );
+
     // Update the transaction display with the partial set
     setTransactions(visibleTx.slice(-50)); // Keep last 50 for performance
     setLatestTransaction(visibleTx[visibleTx.length - 1]);
     setCurrentPosition(playbackIndex + 1);
 
+    // Generate network data from currently visible transactions
+    // This ensures all visualizations (Sankey, NetworkGraph, etc.) show matching data
+    try {
+      // Extract network data locally during playback to avoid server roundtrips
+      const networkData = extractNetworkDataFromTransactions(visibleTx);
+
+      // Update the network visualization states
+      setNodes(networkData.nodes);
+      setLinks(networkData.links);
+      setFlowData(networkData.flowData);
+
+      console.log(
+        `Playback: Updated network with ${networkData.nodes.length} nodes and ${networkData.links.length} links at speed ${playbackSpeed}x`
+      );
+    } catch (error) {
+      console.error('Error extracting network data during playback:', error);
+    }
+
     // Schedule the next transaction
     const intervalMs = 1000 / playbackSpeed;
+    console.log(
+      `Next transaction in ${intervalMs.toFixed(
+        0
+      )}ms at ${playbackSpeed}x speed`
+    );
+
     playbackTimeoutRef.current = setTimeout(() => {
       setPlaybackIndex((prev) => prev + 1);
     }, intervalMs);
@@ -168,6 +208,76 @@ export const SimulationProvider = ({ children }) => {
       }
     };
   }, [isPlaying, playbackIndex, playbackSpeed]);
+
+  // Helper function to extract network data from transactions during playback
+  // This avoids relying on the server for this calculation
+  const extractNetworkDataFromTransactions = (transactions) => {
+    if (!transactions || transactions.length === 0) {
+      return { nodes: [], links: [], flowData: [] };
+    }
+
+    const uniqueNodes = new Map();
+    const uniqueLinks = new Map();
+
+    // Process transactions to build nodes and links
+    transactions.forEach((tx) => {
+      const source = tx.sender;
+      const target = tx.receiver;
+
+      // Skip if sender or receiver is missing
+      if (!source || !target) {
+        return;
+      }
+
+      // Process nodes
+      if (!uniqueNodes.has(source)) {
+        uniqueNodes.set(source, { id: source, transactions: 0 });
+      }
+      if (!uniqueNodes.has(target)) {
+        uniqueNodes.set(target, { id: target, transactions: 0 });
+      }
+
+      // Update node transaction counts
+      const sourceNode = uniqueNodes.get(source);
+      sourceNode.transactions = (sourceNode.transactions || 0) + 1;
+      uniqueNodes.set(source, sourceNode);
+
+      const targetNode = uniqueNodes.get(target);
+      targetNode.transactions = (targetNode.transactions || 0) + 1;
+      uniqueNodes.set(target, targetNode);
+
+      // Create a unique key for this link
+      const linkKey = `${source}-${target}`;
+      if (!uniqueLinks.has(linkKey)) {
+        uniqueLinks.set(linkKey, {
+          source,
+          target,
+          value: 0,
+          count: 0,
+        });
+      }
+
+      // Update link info
+      const link = uniqueLinks.get(linkKey);
+      link.count += 1;
+      link.value += parseFloat(tx.amount || 0);
+      uniqueLinks.set(linkKey, link);
+    });
+
+    // Prepare flow data for Sankey diagram
+    const flowData = [...uniqueLinks.values()].map((link) => ({
+      source: link.source,
+      target: link.target,
+      amount: link.value,
+      count: link.count,
+    }));
+
+    return {
+      nodes: Array.from(uniqueNodes.values()),
+      links: Array.from(uniqueLinks.values()),
+      flowData: flowData,
+    };
+  };
 
   // Request prediction data with debouncing and caching
   const requestPredictionData = useCallback(() => {
@@ -468,6 +578,7 @@ export const SimulationProvider = ({ children }) => {
         playbackSpeed,
         playTransactions,
         pauseTransactions,
+        togglePlayTransactions,
         changePlaybackSpeed,
       }}>
       {children}

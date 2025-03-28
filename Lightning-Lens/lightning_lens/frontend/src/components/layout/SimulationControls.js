@@ -37,6 +37,8 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
     isPlaying,
     playbackSpeed,
     changePlaybackSpeed,
+    playbackIndex,
+    totalTransactions,
   } = useSimulation();
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -49,6 +51,12 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
     { label: '5x', value: 5 },
     { label: '10x', value: 10 },
   ];
+
+  // Calculate playback progress percentage
+  const playbackProgress =
+    totalTransactions > 0
+      ? Math.min(100, (playbackIndex / totalTransactions) * 100)
+      : 0;
 
   // Handle speed change
   const handleSpeedChange = (speed) => {
@@ -399,6 +407,23 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
           </Tooltip>
         </div>
       </div>
+
+      {/* Playback Progress Bar - Only visible when playing */}
+      {isPlaying && (
+        <div className='w-full bg-gray-700 h-1.5 mt-1 relative overflow-hidden'>
+          <div
+            className='absolute h-full bg-gradient-to-r from-blue-500 to-green-400 transition-all duration-100 ease-out'
+            style={{ width: `${playbackProgress}%` }}></div>
+          <div className='container mx-auto px-4 flex justify-between text-xs text-gray-400 py-1'>
+            <span>
+              Transaction {playbackIndex + 1} of {totalTransactions}
+            </span>
+            <span className='text-green-300'>
+              {playbackProgress.toFixed(1)}% complete
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
