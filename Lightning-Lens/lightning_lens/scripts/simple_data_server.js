@@ -584,6 +584,8 @@ wss.on('connection', (ws, req) => {
       switch (data.type) {
         case 'get_simulation_info':
           sendSimulationInfo(ws);
+          // Also send initial network data
+          sendInitialData(ws);
           break;
         case 'get_all_simulations':
           sendAllSimulations(ws);
@@ -613,6 +615,8 @@ wss.on('connection', (ws, req) => {
           break;
         case 'reset_simulation':
           resetSimulation(ws);
+          // Also send initial data after reset
+          sendInitialData(ws);
           break;
         case 'get_latest_predictions':
           sendLatestPredictions(ws);
@@ -668,6 +672,8 @@ wss.on('connection', (ws, req) => {
   // Send simulation info if available
   if (latestSimulationFile) {
     sendSimulationInfo(ws);
+    // Also send initial network data
+    sendInitialData(ws);
   }
 });
 
@@ -1037,3 +1043,116 @@ process.on('SIGINT', () => {
     });
   });
 });
+
+// Helper function to extract nodes and links from transactions
+function extractNetworkData(transactions) {
+  if (!transactions || transactions.length === 0) {
+    console.log('No transactions to extract network data from');
+    return { nodes: [], links: [] };
+  }
+
+  const uniqueNodes = new Map();
+  const uniqueLinks = new Map();
+  const nodeTransactions = new Map();
+
+  // Process transactions to build nodes and links
+  transactions.forEach((tx, index) => {
+    const source = tx.sender;
+    const target = tx.receiver;
+
+    // Skip if sender or receiver is missing
+    if (!source || !target) {
+      return;
+    }
+
+    // Process nodes
+    if (!uniqueNodes.has(source)) {
+      uniqueNodes.set(source, { id: source, transactions: 0 });
+    }
+    if (!uniqueNodes.has(target)) {
+      uniqueNodes.set(target, { id: target, transactions: 0 });
+    }
+
+    // Update node transaction counts
+    const sourceNode = uniqueNodes.get(source);
+    sourceNode.transactions = (sourceNode.transactions || 0) + 1;
+    uniqueNodes.set(source, sourceNode);
+
+    const targetNode = uniqueNodes.get(target);
+    targetNode.transactions = (targetNode.transactions || 0) + 1;
+    uniqueNodes.set(target, targetNode);
+
+    // Track node pairs for links
+    if (!nodeTransactions.has(source)) {
+      nodeTransactions.set(source, new Map());
+    }
+    if (!nodeTransactions.get(source).has(target)) {
+      nodeTransactions.get(source).set(target, { count: 0, value: 0 });
+    }
+
+    // Update link data
+    const linkData = nodeTransactions.get(source).get(target);
+    linkData.count += 1;
+    linkData.value += parseFloat(tx.amount || 0);
+    nodeTransactions.get(source).set(target, linkData);
+
+    // Create a unique key for this link
+    const linkKey = `${source}-${target}`;
+    if (!uniqueLinks.has(linkKey)) {
+      uniqueLinks.set(linkKey, {
+        source,
+        target,
+        value: 0,
+        count: 0,
+      });
+    }
+
+    // Update link info
+    const link = uniqueLinks.get(linkKey);
+    link.count += 1;
+    link.value += parseFloat(tx.amount || 0);
+    uniqueLinks.set(linkKey, link);
+  });
+
+  // Prepare flow data for Sankey diagram
+  const flowData = [...uniqueLinks.values()].map((link) => ({
+    source: link.source,
+    target: link.target,
+    amount: link.value,
+    count: link.count,
+  }));
+
+  return {
+    nodes: Array.from(uniqueNodes.values()),
+    links: Array.from(uniqueLinks.values()),
+    flowData: flowData,
+  };
+}
+
+// Send initial data to client including nodes and links
+function sendInitialData(client) {
+  if (!latestSimulationFile || currentTransactions.length === 0) {
+    console.log('No simulation data to send');
+    return;
+  }
+
+  // Extract network data from transactions
+  const { nodes, links, flowData } = extractNetworkData(currentTransactions);
+  console.log(
+    `Extracted ${nodes.length} nodes and ${links.length} links from transactions`
+  );
+
+  // Send comprehensive data to client
+  safeSend(
+    client,
+    JSON.stringify({
+      type: 'transactions',
+      transactions: currentTransactions.slice(-50), // Only send recent transactions
+      nodes: nodes,
+      links: links,
+      flowData: flowData,
+      totalTransactions: currentTransactions.length,
+      currentPosition: Math.min(currentTransactions.length, 50),
+    })
+  );
+}

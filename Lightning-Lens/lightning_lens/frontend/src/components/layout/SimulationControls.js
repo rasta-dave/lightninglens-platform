@@ -1,73 +1,156 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSimulation } from '../../contexts/SimulationContext';
+
+// Tooltip component
+const Tooltip = ({ content, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div
+      className='relative'
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}>
+      {children}
+      {isVisible && (
+        <div className='absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded shadow-lg whitespace-nowrap z-10'>
+          {content}
+          <div className='absolute top-full left-1/2 transform -translate-x-1/2 border-t-4 border-r-4 border-l-4 border-transparent border-t-gray-900'></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
   const {
-    simulationInfo,
-    totalTransactions,
-    currentPosition,
-    userSelectedFile,
     allSimulations,
-    switchSimulation,
+    simulationInfo,
+    switchToSimulation,
     resetSimulation,
-    viewLatestSimulation,
+    isLoading,
+    newSimulationNotification,
+    userSelectedFile,
+    isPredictionsLoading,
+    requestPredictionData,
   } = useSimulation();
 
-  const [showSimulationList, setShowSimulationList] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
 
-  const toggleSimulationList = () => {
-    setShowSimulationList(!showSimulationList);
+  // Automatically load the latest simulation when component mounts if no simulation is loaded
+  useEffect(() => {
+    if (!simulationInfo && allSimulations && allSimulations.length > 0) {
+      // Find the most recent simulation
+      const latestSim =
+        allSimulations.find((sim) => sim.isCurrent) || allSimulations[0];
+      console.log('Auto-loading latest simulation:', latestSim.filename);
+      switchToSimulation(latestSim.filename, true);
+    }
+  }, [simulationInfo, allSimulations, switchToSimulation]);
+
+  const handleSelectFile = (filename) => {
+    switchToSimulation(filename, true);
+    setShowDropdown(false);
   };
 
-  const handleMLAnalyticsClick = () => {
-    // Toggle ML Analytics visibility
-    setShowPredictionsTab(!showPredictionsTab);
-
-    // If turning on ML Analytics, scroll to top of page as well
-    if (!showPredictionsTab) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Toggle ML Analytics panel and fetch predictions if needed
+  const togglePredictions = () => {
+    if (!showPredictionsTab && !isPredictionsLoading) {
+      // Request fresh prediction data when user toggles on the analytics
+      requestPredictionData();
     }
+    setShowPredictionsTab(!showPredictionsTab);
   };
 
   return (
-    <div className='container mx-auto p-4 mb-4 bg-node-background shadow-lightning-glow rounded-lg mt-4 border border-lightning-blue border-opacity-20'>
-      <div className='flex justify-between items-center flex-wrap'>
-        <div>
-          <div className='flex items-center'>
-            <h2 className='text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-bitcoin-orange to-lightning-blue'>
-              {simulationInfo
-                ? simulationInfo.filename
-                : 'No simulation data loaded'}
-            </h2>
-
-            {/* Add indicator when user has manually selected a file */}
-            {userSelectedFile && (
-              <span className='ml-3 text-xs px-2 py-1 bg-bitcoin-orange/80 text-satoshi-white rounded-full'>
-                Manual Selection
+    <div className='bg-gray-800 shadow-md mb-6 sticky top-0 z-10'>
+      <div className='container mx-auto py-3 px-4 flex flex-wrap items-center justify-between gap-4'>
+        {/* Current Simulation Info */}
+        <div className='flex items-center space-x-4'>
+          <div className='text-gray-300'>
+            <span className='text-sm font-semibold mr-1'>Simulation:</span>
+            {simulationInfo ? (
+              <span className='bg-gray-700 px-2 py-1 rounded text-xs font-mono'>
+                {simulationInfo.filename}
+              </span>
+            ) : (
+              <span className='text-gray-500 text-xs italic'>
+                No data loaded
               </span>
             )}
           </div>
 
-          <p className='text-satoshi-white'>
-            {totalTransactions > 0
-              ? `Transactions: ${currentPosition} / ${totalTransactions}`
-              : 'No transaction data yet'}
-            {totalTransactions > 0 && currentPosition >= totalTransactions && (
-              <span className='ml-2 text-node-green font-semibold'>
-                (Simulation Complete)
-              </span>
-            )}
-          </p>
-        </div>
-
-        <div className='flex flex-wrap gap-2 mt-2 sm:mt-0'>
-          <button
-            onClick={resetSimulation}
-            className='px-4 py-2 bg-gradient-to-r from-bitcoin-orange to-bitcoin-orange/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-bitcoin-orange/30'>
-            <span className='flex items-center'>
+          {/* Simulation Dropdown */}
+          <div className='relative'>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              disabled={isLoading}
+              className={`px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center space-x-1 ${
+                isLoading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}>
+              <span>Select Simulation</span>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
-                className='h-4 w-4 mr-1'
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown ? 'transform rotate-180' : ''
+                }`}
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M19 9l-7 7-7-7'
+                />
+              </svg>
+            </button>
+
+            {showDropdown && (
+              <div className='absolute left-0 mt-1 w-64 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-20'>
+                <div className='py-1 max-h-96 overflow-y-auto'>
+                  {allSimulations.length > 0 ? (
+                    allSimulations.map((sim) => (
+                      <button
+                        key={sim.filename}
+                        onClick={() => handleSelectFile(sim.filename)}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-700 flex items-center justify-between ${
+                          sim.isCurrent ? 'bg-blue-900/30 text-blue-300' : ''
+                        } ${
+                          userSelectedFile === sim.filename
+                            ? 'text-green-300'
+                            : ''
+                        }`}>
+                        <span className='truncate'>{sim.filename}</span>
+                        {sim.isCurrent && (
+                          <span className='text-xs bg-blue-800 text-blue-200 px-1.5 py-0.5 rounded'>
+                            Current
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <div className='px-4 py-2 text-sm text-gray-400'>
+                      No simulations available
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reset Button */}
+          <Tooltip content='Reset to beginning of simulation'>
+            <button
+              onClick={resetSimulation}
+              disabled={isLoading || !simulationInfo}
+              className={`px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm ${
+                isLoading || !simulationInfo
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''
+              }`}>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                className='h-4 w-4 inline mr-1'
                 fill='none'
                 viewBox='0 0 24 24'
                 stroke='currentColor'>
@@ -78,63 +161,48 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
                   d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
                 />
               </svg>
-              Restart
-            </span>
-          </button>
+              Reset
+            </button>
+          </Tooltip>
+        </div>
 
-          <button
-            onClick={toggleSimulationList}
-            className='px-4 py-2 bg-gradient-to-r from-lightning-blue to-lightning-blue/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-lightning-blue/30'>
-            <span className='flex items-center'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-4 w-4 mr-1'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M4 6h16M4 12h16M4 18h7'
-                />
-              </svg>
-              {showSimulationList
-                ? 'Hide Simulation Data'
-                : 'Show Simulation Data'}
-            </span>
-          </button>
+        {/* Right Controls */}
+        <div className='flex items-center space-x-4'>
+          {/* Loading Indicator */}
+          {isLoading && (
+            <div className='text-gray-300 flex items-center'>
+              <div className='animate-spin mr-2 h-4 w-4 text-white'>
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  fill='none'
+                  viewBox='0 0 24 24'
+                  stroke='currentColor'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+                  />
+                </svg>
+              </div>
+              <span className='text-sm'>Loading...</span>
+            </div>
+          )}
 
-          <button
-            onClick={viewLatestSimulation}
-            className='px-4 py-2 bg-gradient-to-r from-node-green to-node-green/80 hover:opacity-90 text-satoshi-white rounded transition-all duration-200 shadow-lightning-glow focus:outline-none border border-node-green/30'>
-            <span className='flex items-center'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-4 w-4 mr-1'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z'
-                />
-              </svg>
-              View Latest
-            </span>
-          </button>
-
-          {/* ML Analytics Button - Made more prominent */}
-          <button
-            onClick={handleMLAnalyticsClick}
-            className={`relative px-4 py-2 ${
-              showPredictionsTab
-                ? 'bg-gradient-to-r from-purple-600 to-blue-600 border-purple-500/50 ring-2 ring-purple-400/30'
-                : 'bg-gradient-to-r from-purple-500 to-blue-500 border-purple-400/30'
-            } hover:opacity-90 text-satoshi-white rounded-lg transition-all duration-200 shadow-lightning-glow focus:outline-none border min-w-[180px]`}>
-            <span className='flex items-center justify-center'>
+          {/* ML Analytics Button - CSS only version without framer-motion */}
+          <Tooltip content='Show ML-powered channel balance analytics'>
+            <button
+              onClick={togglePredictions}
+              className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center transform hover:scale-105 active:scale-95 ${
+                showPredictionsTab
+                  ? 'bg-gradient-to-r from-purple-700 to-blue-600 text-white'
+                  : 'bg-gradient-to-r from-purple-800/40 to-blue-700/40 hover:from-purple-700/70 hover:to-blue-600/70 text-gray-100'
+              }`}
+              style={{
+                boxShadow: showPredictionsTab
+                  ? '0 0 15px rgba(124, 58, 237, 0.5)'
+                  : 'none',
+              }}>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
                 className='h-5 w-5 mr-2'
@@ -144,70 +212,33 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
                 <path
                   strokeLinecap='round'
                   strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+                  strokeWidth={1.5}
+                  d='M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
                 />
               </svg>
-              {showPredictionsTab ? 'Hide ML Analytics' : 'Show ML Analytics'}
-            </span>
+              <span>ML Analytics</span>
 
-            {/* Helper tooltip */}
-            {!showPredictionsTab && (
-              <span className='absolute top-full left-1/2 transform -translate-x-1/2 mt-1 whitespace-nowrap text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded opacity-80'>
-                Displays at the top of the page
-              </span>
-            )}
-          </button>
+              {/* Loading spinner for predictions specifically */}
+              {isPredictionsLoading && (
+                <div className='ml-2 animate-spin h-4 w-4 text-white'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                    stroke='currentColor'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+                    />
+                  </svg>
+                </div>
+              )}
+            </button>
+          </Tooltip>
         </div>
       </div>
-
-      {/* Simulation List Dropdown */}
-      {showSimulationList && (
-        <div className='mt-4 border border-lightning-blue border-opacity-20 rounded-lg p-2 max-h-60 overflow-y-auto bg-dark-node'>
-          <h3 className='font-semibold text-lg mb-2 text-bitcoin-orange'>
-            Available Simulation Data
-          </h3>
-          {allSimulations.length === 0 ? (
-            <p className='text-gray-400'>No simulation data found</p>
-          ) : (
-            <ul className='divide-y divide-lightning-blue/10'>
-              {allSimulations.map((sim) => (
-                <li
-                  key={sim.filename}
-                  className={`p-2 cursor-pointer hover:bg-node-background transition-colors duration-150 ${
-                    simulationInfo && simulationInfo.filename === sim.filename
-                      ? 'bg-bitcoin-orange/10'
-                      : ''
-                  }`}
-                  onClick={() => switchSimulation(sim.filename)}>
-                  <div className='flex justify-between items-center'>
-                    <div>
-                      <span
-                        className={`font-medium ${
-                          simulationInfo &&
-                          simulationInfo.filename === sim.filename
-                            ? 'text-bitcoin-orange'
-                            : 'text-satoshi-white'
-                        }`}>
-                        {sim.filename}
-                      </span>
-                      <p className='text-sm text-gray-400'>
-                        Modified: {new Date(sim.modified).toLocaleString()}
-                      </p>
-                    </div>
-                    {simulationInfo &&
-                      simulationInfo.filename === sim.filename && (
-                        <span className='text-xs px-2 py-1 bg-gradient-to-r from-bitcoin-orange to-lightning-blue text-satoshi-white rounded-full'>
-                          Current
-                        </span>
-                      )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
     </div>
   );
 };

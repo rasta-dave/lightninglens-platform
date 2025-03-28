@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react';
 import { useWebSocketContext } from './WebSocketContext';
 
@@ -27,296 +28,182 @@ export const SimulationProvider = ({ children }) => {
     useState(null);
   const [predictions, setPredictions] = useState([]);
   const [predictionInfo, setPredictionInfo] = useState(null);
+  const [isPredictionsLoading, setIsPredictionsLoading] = useState(false);
+
+  // Ref to track prediction data requests and avoid redundant requests
+  const predictionRequestTimeoutRef = useRef(null);
+  const lastPredictionRequestTimeRef = useRef(0);
+  const isPredictionsRequested = useRef(false);
 
   // Get WebSocket context
   const { sendMessage, registerMessageHandler } = useWebSocketContext();
 
-  // Create memoized functions to update the network graph
-  const updateNetworkGraph = useCallback((transaction) => {
-    if (!transaction || !transaction.sender || !transaction.receiver) {
-      console.error('Received invalid transaction data:', transaction);
-      return;
-    }
+  // Request simulation data
+  const requestSimulationData = useCallback(() => {
+    sendMessage({ type: 'get_simulation_info' });
+    sendMessage({ type: 'get_all_simulations' });
+  }, [sendMessage]);
 
-    setNodes((prevNodes) => {
-      // Add sender node if it doesn't exist
-      const senderExists = prevNodes.some(
-        (node) => node.id === transaction.sender
-      );
-      const receiverExists = prevNodes.some(
-        (node) => node.id === transaction.receiver
-      );
-
-      const updatedNodes = [...prevNodes];
-
-      if (!senderExists) {
-        updatedNodes.push({
-          id: transaction.sender,
-          name: `Node ${transaction.sender}`,
-          transactions: 1,
-        });
-      } else {
-        // Update transaction count for existing node
-        const senderIndex = updatedNodes.findIndex(
-          (node) => node.id === transaction.sender
-        );
-        if (senderIndex !== -1) {
-          updatedNodes[senderIndex] = {
-            ...updatedNodes[senderIndex],
-            transactions: (updatedNodes[senderIndex].transactions || 0) + 1,
-          };
-        }
-      }
-
-      if (!receiverExists) {
-        updatedNodes.push({
-          id: transaction.receiver,
-          name: `Node ${transaction.receiver}`,
-          transactions: 1,
-        });
-      } else {
-        // Update transaction count for existing node
-        const receiverIndex = updatedNodes.findIndex(
-          (node) => node.id === transaction.receiver
-        );
-        if (receiverIndex !== -1) {
-          updatedNodes[receiverIndex] = {
-            ...updatedNodes[receiverIndex],
-            transactions: (updatedNodes[receiverIndex].transactions || 0) + 1,
-          };
-        }
-      }
-
-      return updatedNodes;
-    });
-
-    setLinks((prevLinks) => {
-      // Check if the link already exists
-      const existingLinkIndex = prevLinks.findIndex(
-        (link) =>
-          link.source === transaction.sender &&
-          link.target === transaction.receiver
-      );
-
-      const updatedLinks = [...prevLinks];
-
-      if (existingLinkIndex === -1) {
-        // Add new link
-        updatedLinks.push({
-          source: transaction.sender,
-          target: transaction.receiver,
-          value: parseFloat(transaction.amount) || 1,
-          count: 1,
-        });
-      } else {
-        // Update existing link
-        updatedLinks[existingLinkIndex] = {
-          ...updatedLinks[existingLinkIndex],
-          value:
-            (updatedLinks[existingLinkIndex].value || 0) +
-            (parseFloat(transaction.amount) || 1),
-          count: (updatedLinks[existingLinkIndex].count || 0) + 1,
-        };
-      }
-
-      return updatedLinks;
-    });
-  }, []);
-
-  const updateFlowData = useCallback((transaction) => {
-    if (!transaction || !transaction.sender || !transaction.receiver) {
-      return;
-    }
-
-    setFlowData((prevFlowData) => {
-      const key = `${transaction.sender}-${transaction.receiver}`;
-      const existingIndex = prevFlowData.findIndex((item) => item.key === key);
-
-      if (existingIndex === -1) {
-        return [
-          ...prevFlowData,
-          {
-            key,
-            source: transaction.sender,
-            target: transaction.receiver,
-            amount: parseFloat(transaction.amount) || 0,
-            count: 1,
-          },
-        ].slice(-20); // Keep only the most recent 20 flow entries
-      } else {
-        const updatedFlowData = [...prevFlowData];
-        updatedFlowData[existingIndex] = {
-          ...updatedFlowData[existingIndex],
-          amount:
-            (updatedFlowData[existingIndex].amount || 0) +
-            (parseFloat(transaction.amount) || 0),
-          count: (updatedFlowData[existingIndex].count || 0) + 1,
-        };
-        return updatedFlowData;
-      }
-    });
-  }, []);
-
-  // Function to handle transaction data
-  const handleTransaction = useCallback(
-    (data) => {
-      const transaction = data.data;
-
-      // Basic validation of transaction data
-      if (!transaction || !transaction.sender || !transaction.receiver) {
-        console.error('Received invalid transaction:', transaction);
-        return;
-      }
-
-      setLatestTransaction(transaction);
-      setTotalTransactions(data.total);
-      setCurrentPosition(data.current);
-
-      // Keep the most recent 50 transactions
-      setTransactions((prev) => {
-        const updatedTransactions = [...prev, transaction].slice(-50);
-        return updatedTransactions;
+  // Switch to a specific simulation
+  const switchToSimulation = useCallback(
+    (filename, isUserSelected = false) => {
+      console.log(`Switching to simulation: ${filename}`);
+      setIsLoading(true);
+      sendMessage({
+        type: 'switch_simulation',
+        filename,
+        isUserSelected,
       });
 
-      // Update network graph
-      updateNetworkGraph(transaction);
-
-      // Update flow data
-      updateFlowData(transaction);
-    },
-    [updateNetworkGraph, updateFlowData]
-  );
-
-  // Switch to a different simulation
-  const switchSimulation = useCallback(
-    (filename) => {
-      // Signal that we're starting a load
-      setIsLoading(true);
-
-      // Clean up existing data to prevent rendering glitches
-      setTransactions([]);
-      setNodes([]);
-      setLinks([]);
-      setFlowData([]);
-      setTotalTransactions(0);
-      setCurrentPosition(0);
-
-      // Track that user has manually selected this file
-      setUserSelectedFile(filename);
-
-      console.log('Switching to simulation:', filename);
-
-      // Use a timeout to ensure we don't send the message before the UI has updated
-      setTimeout(() => {
-        sendMessage({
-          type: 'switch_simulation',
-          filename: filename,
-          isUserSelected: true,
-        });
-      }, 50);
+      if (isUserSelected) {
+        setUserSelectedFile(filename);
+      }
     },
     [sendMessage]
   );
 
-  // Reset the current simulation
+  // Reset current simulation
   const resetSimulation = useCallback(() => {
-    // Start loading indicator
+    console.log('Resetting simulation');
     setIsLoading(true);
-
-    // Clean up existing data to prevent rendering artifacts
-    setTransactions([]);
-    setNodes([]);
-    setLinks([]);
-    setFlowData([]);
-    setCurrentPosition(0);
-
-    setTimeout(() => {
-      sendMessage({
-        type: 'reset_simulation',
-      });
-    }, 50);
+    sendMessage({ type: 'reset_simulation' });
   }, [sendMessage]);
 
-  // View the latest simulation
-  const viewLatestSimulation = useCallback(() => {
-    // Clear user selection to allow auto-switching again
-    setUserSelectedFile(null);
+  // Request prediction data with debouncing and caching
+  const requestPredictionData = useCallback(() => {
+    // Only allow one request every 5 seconds
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastPredictionRequestTimeRef.current;
 
-    // Start loading indicator
-    setIsLoading(true);
-
-    // Clean up existing data to prevent rendering artifacts
-    setTransactions([]);
-    setNodes([]);
-    setLinks([]);
-    setFlowData([]);
-    setTotalTransactions(0);
-    setCurrentPosition(0);
-
-    // Find and load the most recent simulation
-    if (allSimulations.length > 0) {
-      const latestSim = allSimulations[0]; // Simulations are sorted with most recent first
-      setTimeout(() => {
-        sendMessage({
-          type: 'switch_simulation',
-          filename: latestSim.filename,
-          isUserSelected: false,
-        });
-      }, 50);
+    if (isPredictionsRequested.current) {
+      console.log('Prediction data already requested, waiting for response...');
+      return;
     }
-  }, [allSimulations, sendMessage]);
 
-  // Dismiss notification
-  const dismissNotification = useCallback(() => {
+    if (timeSinceLastRequest < 5000) {
+      console.log(
+        `Throttling prediction request, last request was ${timeSinceLastRequest}ms ago`
+      );
+
+      // Clear any existing timeout
+      if (predictionRequestTimeoutRef.current) {
+        clearTimeout(predictionRequestTimeoutRef.current);
+      }
+
+      // Set a timeout to make the request when ready
+      predictionRequestTimeoutRef.current = setTimeout(() => {
+        requestPredictionData();
+      }, 5000 - timeSinceLastRequest);
+
+      return;
+    }
+
+    console.log('Requesting prediction data...');
+    setIsPredictionsLoading(true);
+    isPredictionsRequested.current = true;
+    lastPredictionRequestTimeRef.current = now;
+
+    // Send message to fetch latest predictions
+    sendMessage({ type: 'get_latest_predictions' });
+  }, [sendMessage]);
+
+  // Handle transaction data
+  const handleTransaction = useCallback((data) => {
+    if (!data || !data.payload) return;
+
+    const transaction = {
+      ...data.payload,
+      timestamp: data.timestamp || new Date().toISOString(),
+    };
+
+    console.log('Setting latest transaction:', transaction);
+    setLatestTransaction(transaction);
+    setTransactions((prevTransactions) => {
+      // Keep a reasonable transaction history
+      const newTransactions = [...prevTransactions, transaction];
+      if (newTransactions.length > 50) {
+        return newTransactions.slice(
+          newTransactions.length - 50,
+          newTransactions.length
+        );
+      }
+      return newTransactions;
+    });
+  }, []);
+
+  // Clear notifications
+  const clearNotification = useCallback(() => {
     setNewSimulationNotification(null);
   }, []);
+
+  // Check available simulations
+  useEffect(() => {
+    requestSimulationData();
+  }, [requestSimulationData]);
 
   // Register WebSocket message handlers
   useEffect(() => {
     const unregisterHandlers = [
       registerMessageHandler('welcome', (data) => {
-        console.log('Received welcome message:', data.message);
-        // If we have a user-selected file, request it on connection
-        if (userSelectedFile) {
-          setTimeout(() => {
-            sendMessage({
-              type: 'switch_simulation',
-              filename: userSelectedFile,
-              isUserSelected: true,
-            });
-          }, 500);
-        } else {
-          // Request simulation info and list
-          sendMessage({ type: 'get_simulation_info' });
-          sendMessage({ type: 'get_all_simulations' });
-        }
+        console.log('Connected to Lightning Lens data stream:', data);
+        requestSimulationData();
       }),
-
-      registerMessageHandler('transaction', handleTransaction),
 
       registerMessageHandler('simulation_loaded', (data) => {
         console.log('Simulation loaded:', data);
-        // Delay state update slightly to ensure loading indicator shows
-        setTimeout(() => {
-          setIsLoading(false); // Stop loading when simulation is loaded
-
-          // Update simulation info without manual selection checks
-          setSimulationInfo({
-            filename: data.filename,
-            transactionCount: data.transactionCount,
-            timestamp: data.timestamp,
-          });
-        }, 300);
+        setSimulationInfo({
+          filename: data.filename,
+          transactionCount: data.transactionCount,
+          timestamp: data.timestamp,
+        });
       }),
 
       registerMessageHandler('all_simulations', (data) => {
-        console.log('All simulations:', data);
-        setAllSimulations(data.simulations || []);
+        console.log('Available simulations:', data.simulations);
+        setAllSimulations(data.simulations);
+      }),
+
+      registerMessageHandler('transactions', (data) => {
+        console.log('Received transactions batch');
+
+        // Update transactions received so far
+        setTotalTransactions(data.totalTransactions || 0);
+        setCurrentPosition(data.currentPosition || 0);
+
+        // Update nodes and links once per batch
+        if (data.nodes && data.nodes.length > 0) {
+          console.log(`Updating ${data.nodes.length} nodes`);
+          setNodes(data.nodes);
+        }
+
+        if (data.links && data.links.length > 0) {
+          console.log(`Updating ${data.links.length} links`);
+          setLinks(data.links);
+        }
+
+        if (data.flowData && data.flowData.length > 0) {
+          console.log(`Updating flow data with ${data.flowData.length} items`);
+          setFlowData(data.flowData);
+        }
+
+        if (data.transactions && data.transactions.length > 0) {
+          console.log(`Processing ${data.transactions.length} transactions`);
+          setTransactions(data.transactions.slice(-50)); // Keep the 50 most recent
+        }
+
+        // Delay stopping the loading indicator to ensure we see it
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 500);
+      }),
+
+      registerMessageHandler('transaction', (data) => {
+        console.log('Received individual transaction');
+        handleTransaction(data);
       }),
 
       registerMessageHandler('new_simulation_available', (data) => {
         console.log('New simulation available:', data);
-        // Show notification for all new simulations
         setNewSimulationNotification({
           filename: data.filename,
           timestamp: data.timestamp,
@@ -337,37 +224,79 @@ export const SimulationProvider = ({ children }) => {
       }),
 
       registerMessageHandler('predictions_data', (data) => {
-        console.log('Received predictions data:', data);
-        setPredictions(data.predictions || []);
+        console.log(
+          `Received predictions data: ${
+            data.predictions?.length || 0
+          } predictions`
+        );
+
+        // Mark request as completed
+        isPredictionsRequested.current = false;
+        setIsPredictionsLoading(false);
+
+        // Update state with prediction data
+        if (data.predictions && Array.isArray(data.predictions)) {
+          // Process and format prediction data for consistency
+          const formattedPredictions = data.predictions.map((pred) => ({
+            ...pred,
+            // Ensure all numeric fields are strings with consistent format
+            capacity: pred.capacity?.toString() || '0',
+            balance_ratio:
+              pred.balance_ratio?.toString() ||
+              pred.current_ratio?.toString() ||
+              '0.5',
+            optimal_ratio:
+              pred.optimal_ratio?.toString() ||
+              pred.predicted_ratio?.toString() ||
+              '0.5',
+            adjustment_needed: pred.adjustment_needed?.toString() || '0',
+            success_rate: pred.success_rate?.toString() || '0.85',
+          }));
+
+          setPredictions(formattedPredictions);
+        } else {
+          setPredictions([]);
+        }
+
         setPredictionInfo({
           filename: data.filename,
-          predictionCount: data.predictions.length,
+          predictionCount: data.predictions?.length || 0,
           timestamp: data.timestamp,
         });
       }),
 
       registerMessageHandler('predictions_loaded', (data) => {
-        console.log('Predictions loaded:', data);
-        // Request the full prediction data
-        sendMessage({ type: 'get_latest_predictions' });
+        console.log('Predictions loaded notification received:', data);
+        // Request the full prediction data, but only if we haven't recently requested it
+        if (!isPredictionsRequested.current) {
+          requestPredictionData();
+        }
       }),
 
       registerMessageHandler('no_predictions', (data) => {
         console.log('No predictions available:', data);
         setPredictions([]);
         setPredictionInfo(null);
+        setIsPredictionsLoading(false);
+        isPredictionsRequested.current = false;
       }),
     ];
 
     // Cleanup function to unregister all handlers
     return () => {
       unregisterHandlers.forEach((unregister) => unregister());
+
+      // Clear any pending timeouts
+      if (predictionRequestTimeoutRef.current) {
+        clearTimeout(predictionRequestTimeoutRef.current);
+      }
     };
   }, [
     registerMessageHandler,
     handleTransaction,
     sendMessage,
     userSelectedFile,
+    requestPredictionData,
   ]);
 
   // When a new simulation notification is received, update the simulation list
@@ -380,52 +309,51 @@ export const SimulationProvider = ({ children }) => {
     }
   }, [newSimulationNotification, sendMessage]);
 
-  // Check for new predictions periodically
+  // Check for new predictions periodically, but with proper throttling
   useEffect(() => {
     const checkInterval = setInterval(() => {
-      sendMessage({ type: 'check_for_new_predictions' });
+      // Only check if we're not already loading
+      if (!isPredictionsLoading && !isPredictionsRequested.current) {
+        sendMessage({ type: 'check_for_new_predictions' });
+      }
     }, 60000); // Check every minute
 
     return () => clearInterval(checkInterval);
-  }, [sendMessage]);
-
-  // Context value
-  const contextValue = {
-    // Simulation data
-    transactions,
-    latestTransaction,
-    nodes,
-    links,
-    flowData,
-    totalTransactions,
-    currentPosition,
-    simulationInfo,
-    allSimulations,
-    isLoading,
-    userSelectedFile,
-    newSimulationNotification,
-    predictions,
-    predictionInfo,
-
-    // Actions
-    switchSimulation,
-    resetSimulation,
-    viewLatestSimulation,
-    dismissNotification,
-  };
+  }, [sendMessage, isPredictionsLoading]);
 
   return (
-    <SimulationContext.Provider value={contextValue}>
+    <SimulationContext.Provider
+      value={{
+        nodes,
+        links,
+        transactions,
+        latestTransaction,
+        flowData,
+        totalTransactions,
+        currentPosition,
+        simulationInfo,
+        allSimulations,
+        isLoading,
+        newSimulationNotification,
+        userSelectedFile,
+        predictions,
+        predictionInfo,
+        isPredictionsLoading,
+        switchToSimulation,
+        requestSimulationData,
+        clearNotification,
+        resetSimulation,
+        requestPredictionData,
+      }}>
       {children}
     </SimulationContext.Provider>
   );
 };
 
-// Custom hook for using the simulation context
 export const useSimulation = () => {
   const context = useContext(SimulationContext);
   if (!context) {
-    throw new Error('useSimulation must be used within a SimulationProvider');
+    throw new Error('useSimulation must be used within SimulationProvider');
   }
   return context;
 };

@@ -1,16 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
-
-// Sample data to use when no real predictions are available
-const SAMPLE_PREDICTIONS = Array(50)
-  .fill(null)
-  .map((_, i) => ({
-    channel_id: `sample_channel_${i + 1}`,
-    capacity: `${Math.round(1000000 + Math.random() * 5000000)}`,
-    balance_ratio: `${Math.random().toFixed(4)}`,
-    optimal_ratio: `${Math.random().toFixed(4)}`,
-    adjustment_needed: `${(Math.random() * 2 - 1).toFixed(4)}`,
-    success_rate: '0.85',
-  }));
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 
 // Component for displaying channel balance predictions and recommendations
 const PredictionAnalysis = ({ predictions }) => {
@@ -20,43 +8,19 @@ const PredictionAnalysis = ({ predictions }) => {
     direction: 'asc',
   });
   const [viewMode, setViewMode] = useState('all'); // 'all', 'critical', 'ok'
-  const [useSampleData, setUseSampleData] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [renderedData, setRenderedData] = useState([]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const resultsPerPage = 15;
 
-  useEffect(() => {
-    // Log the predictions data for debugging
-    console.log('PredictionAnalysis received predictions:', predictions);
-
-    // If no predictions provided, switch to sample data after 5 seconds
-    if (!predictions || predictions.length === 0) {
-      const timer = setTimeout(() => {
-        console.log('No predictions data after timeout, using sample data');
-        setUseSampleData(true);
-      }, 5000);
-
-      return () => clearTimeout(timer);
-    } else {
-      setUseSampleData(false);
-    }
-  }, [predictions]);
-
-  // Use real or sample predictions based on availability
-  const effectivePredictions = useMemo(() => {
-    if (useSampleData) {
-      return SAMPLE_PREDICTIONS;
-    }
-    return predictions || [];
-  }, [predictions, useSampleData]);
-
-  // Filter and sort predictions
+  // Optimization: Filter and sort predictions using useMemo to prevent recalculation
   const filteredPredictions = useMemo(() => {
-    if (!effectivePredictions || effectivePredictions.length === 0) return [];
+    if (!predictions || predictions.length === 0) return [];
 
     // First, filter by search term
-    let filtered = effectivePredictions;
+    let filtered = predictions;
 
     if (searchTerm) {
       const lowercaseSearch = searchTerm.toLowerCase();
@@ -78,17 +42,34 @@ const PredictionAnalysis = ({ predictions }) => {
 
     // Then, sort by the specified configuration
     const sortedPredictions = [...filtered].sort((a, b) => {
-      if (a[sortConfig.key] < b[sortConfig.key]) {
+      // Convert string numbers to actual numbers for proper numeric sorting
+      const aVal =
+        sortConfig.key.includes('ratio') ||
+        sortConfig.key === 'adjustment_needed'
+          ? parseFloat(a[sortConfig.key])
+          : sortConfig.key === 'capacity'
+          ? parseInt(a[sortConfig.key])
+          : a[sortConfig.key];
+
+      const bVal =
+        sortConfig.key.includes('ratio') ||
+        sortConfig.key === 'adjustment_needed'
+          ? parseFloat(b[sortConfig.key])
+          : sortConfig.key === 'capacity'
+          ? parseInt(b[sortConfig.key])
+          : b[sortConfig.key];
+
+      if (aVal < bVal) {
         return sortConfig.direction === 'asc' ? -1 : 1;
       }
-      if (a[sortConfig.key] > b[sortConfig.key]) {
+      if (aVal > bVal) {
         return sortConfig.direction === 'asc' ? 1 : -1;
       }
       return 0;
     });
 
     return sortedPredictions;
-  }, [effectivePredictions, searchTerm, sortConfig, viewMode]);
+  }, [predictions, searchTerm, sortConfig, viewMode]);
 
   // Get paginated results
   const paginatedPredictions = useMemo(() => {
@@ -101,35 +82,60 @@ const PredictionAnalysis = ({ predictions }) => {
     return Math.ceil(filteredPredictions.length / resultsPerPage);
   }, [filteredPredictions]);
 
-  // Page navigation functions
-  const goToPage = (page) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
+  // Reset initial load state when predictions change
+  useEffect(() => {
+    if (predictions && predictions.length > 0) {
+      // Use a short timeout to show loading state so users see it's working
+      const timer = setTimeout(() => {
+        setIsInitialLoad(false);
+      }, 300);
 
-  const goToPreviousPage = () => {
+      // Clear the timeout on cleanup
+      return () => clearTimeout(timer);
+    }
+  }, [predictions]);
+
+  // Optimization: Use a separate effect to update the rendered data
+  // This prevents the entire component from re-rendering when the table data changes
+  useEffect(() => {
+    setRenderedData(paginatedPredictions);
+  }, [paginatedPredictions]);
+
+  // Page navigation functions - Memoized callbacks to prevent recreation on render
+  const goToPage = useCallback(
+    (page) => {
+      setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    },
+    [totalPages]
+  );
+
+  const goToPreviousPage = useCallback(() => {
     setCurrentPage((prev) => Math.max(1, prev - 1));
-  };
+  }, []);
 
-  const goToNextPage = () => {
+  const goToNextPage = useCallback(() => {
     setCurrentPage((prev) => Math.min(totalPages, prev + 1));
-  };
+  }, [totalPages]);
 
   // Reset page when filters change
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, viewMode, sortConfig]);
 
   // Request a sort
-  const requestSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+  const requestSort = useCallback(
+    (key) => {
+      let direction = 'asc';
+      if (sortConfig.key === key && sortConfig.direction === 'asc') {
+        direction = 'desc';
+      }
+      setSortConfig({ key, direction });
+    },
+    [sortConfig]
+  );
 
   // Helper to determine if channel balances need adjustment
-  const getChannelStatus = (adjustmentNeeded) => {
+  const getChannelStatus = useCallback((adjustmentNeeded) => {
     const adjustment = parseFloat(adjustmentNeeded);
     if (Math.abs(adjustment) < 0.1) {
       return { status: 'optimal', color: 'text-green-400' };
@@ -138,18 +144,18 @@ const PredictionAnalysis = ({ predictions }) => {
     } else {
       return { status: 'critical', color: 'text-red-400' };
     }
-  };
+  }, []);
 
-  // Calculate some metrics
+  // Calculate some metrics - Memoized to prevent recalculation
   const metrics = useMemo(() => {
-    if (!effectivePredictions || effectivePredictions.length === 0)
+    if (!predictions || predictions.length === 0)
       return { totalChannels: 0, criticalChannels: 0, optimalChannels: 0 };
 
-    const total = effectivePredictions.length;
-    const critical = effectivePredictions.filter(
+    const total = predictions.length;
+    const critical = predictions.filter(
       (p) => Math.abs(parseFloat(p.adjustment_needed)) > 0.3
     ).length;
-    const optimal = effectivePredictions.filter(
+    const optimal = predictions.filter(
       (p) => Math.abs(parseFloat(p.adjustment_needed)) < 0.1
     ).length;
 
@@ -160,54 +166,65 @@ const PredictionAnalysis = ({ predictions }) => {
       criticalPercent: Math.round((critical / total) * 100),
       optimalPercent: Math.round((optimal / total) * 100),
     };
-  }, [effectivePredictions]);
+  }, [predictions]);
 
   // Get the unique nodes from the channel_ids
   const nodes = useMemo(() => {
-    if (!effectivePredictions || effectivePredictions.length === 0)
-      return new Set();
+    if (!predictions || predictions.length === 0) return new Set();
 
     const nodeSet = new Set();
-    effectivePredictions.forEach((pred) => {
+    predictions.forEach((pred) => {
       const [source] = pred.channel_id.split('_');
       nodeSet.add(source);
     });
 
     return nodeSet;
-  }, [effectivePredictions]);
+  }, [predictions]);
 
-  // Render a loading state if predictions aren't available and not using sample data
-  if ((!predictions || predictions.length === 0) && !useSampleData) {
+  // Render an improved loading state
+  if (!predictions || predictions.length === 0 || isInitialLoad) {
     return (
       <div className='p-4 text-center'>
         <div className='animate-pulse flex flex-col items-center'>
           <div className='h-6 bg-gray-700 rounded w-3/4 mb-4'></div>
-          <div className='h-32 bg-gray-700 rounded w-full'></div>
-          <p className='mt-4 text-gray-400'>Loading prediction data...</p>
-          <button
-            onClick={() => setUseSampleData(true)}
-            className='mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors'>
-            Use Sample Data
-          </button>
+          <div className='h-32 bg-gray-700 rounded w-full mb-6'></div>
+          <div className='flex flex-col items-center'>
+            <p className='text-xl font-semibold text-gray-200 mb-2'>
+              Loading ML Prediction Data
+            </p>
+            <p className='text-gray-400 mb-4'>
+              Please wait while we retrieve and process the data...
+            </p>
+            <div className='relative w-64 h-3 bg-gray-700 rounded-full overflow-hidden'>
+              <div className='absolute top-0 left-0 h-full bg-blue-600 rounded-full animate-pulse-progress'></div>
+            </div>
+          </div>
         </div>
+        <style jsx>{`
+          @keyframes pulse-progress {
+            0% {
+              width: 10%;
+              left: 0;
+            }
+            50% {
+              width: 40%;
+              left: 30%;
+            }
+            100% {
+              width: 10%;
+              left: 90%;
+            }
+          }
+          .animate-pulse-progress {
+            animation: pulse-progress 2s infinite;
+          }
+        `}</style>
       </div>
     );
   }
 
   return (
     <div className='bg-gray-800 rounded-lg shadow-md'>
-      {useSampleData && (
-        <div className='bg-yellow-800 text-yellow-100 p-2 mb-4 rounded-md text-sm'>
-          <strong>Note:</strong> Using sample data since real prediction data is
-          unavailable.
-          <button
-            onClick={() => setUseSampleData(false)}
-            className='ml-4 px-2 py-1 bg-yellow-700 text-yellow-100 rounded-md hover:bg-yellow-600 transition-colors text-xs'>
-            Try Real Data
-          </button>
-        </div>
-      )}
-
       {/* Summary Metrics */}
       <div className='mb-6 grid grid-cols-1 md:grid-cols-4 gap-4'>
         <div className='bg-blue-900/30 p-4 rounded-lg shadow border border-blue-800'>
@@ -249,8 +266,8 @@ const PredictionAnalysis = ({ predictions }) => {
             Success Rate
           </h3>
           <p className='text-3xl font-bold text-purple-200'>
-            {effectivePredictions[0]?.success_rate
-              ? `${parseFloat(effectivePredictions[0].success_rate) * 100}%`
+            {predictions[0]?.success_rate
+              ? `${parseFloat(predictions[0].success_rate) * 100}%`
               : 'N/A'}
           </p>
           <p className='text-sm text-purple-400'>ML model confidence</p>
@@ -304,16 +321,14 @@ const PredictionAnalysis = ({ predictions }) => {
       <div className='mb-4 flex justify-between items-center text-gray-400 text-sm'>
         <div>
           Showing{' '}
-          {paginatedPredictions.length > 0
-            ? (currentPage - 1) * resultsPerPage + 1
-            : 0}
+          {renderedData.length > 0 ? (currentPage - 1) * resultsPerPage + 1 : 0}
           -{Math.min(currentPage * resultsPerPage, filteredPredictions.length)}{' '}
           of {filteredPredictions.length} results
         </div>
       </div>
 
-      {/* Predictions Table */}
-      <div className='overflow-x-auto'>
+      {/* Predictions Table - Virtualized/optimized for large datasets */}
+      <div className='overflow-x-auto overflow-y-hidden'>
         <table className='min-w-full divide-y divide-gray-700'>
           <thead className='bg-gray-900'>
             <tr>
@@ -373,7 +388,7 @@ const PredictionAnalysis = ({ predictions }) => {
             </tr>
           </thead>
           <tbody className='bg-gray-800 divide-y divide-gray-700'>
-            {paginatedPredictions.map((prediction, index) => {
+            {renderedData.map((prediction, index) => {
               const channelStatus = getChannelStatus(
                 prediction.adjustment_needed
               );
@@ -510,7 +525,7 @@ const PredictionAnalysis = ({ predictions }) => {
               <p className='text-sm text-gray-400'>
                 Showing{' '}
                 <span className='font-medium'>
-                  {paginatedPredictions.length > 0
+                  {renderedData.length > 0
                     ? (currentPage - 1) * resultsPerPage + 1
                     : 0}
                 </span>{' '}
