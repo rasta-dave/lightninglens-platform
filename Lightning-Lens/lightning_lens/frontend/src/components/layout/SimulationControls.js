@@ -363,12 +363,12 @@ const SimulationControls = ({ showPredictionsTab, setShowPredictionsTab }) => {
               onClick={togglePredictions}
               className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center transform hover:scale-105 active:scale-95 ${
                 showPredictionsTab
-                  ? 'bg-gradient-to-r from-purple-700 to-blue-600 text-white'
-                  : 'bg-gradient-to-r from-purple-800/40 to-blue-700/40 hover:from-purple-700/70 hover:to-blue-600/70 text-gray-100'
+                  ? 'bg-lightning-blue text-white'
+                  : 'bg-lightning-blue/20 hover:bg-lightning-blue/30 text-gray-100'
               }`}
               style={{
                 boxShadow: showPredictionsTab
-                  ? '0 0 15px rgba(124, 58, 237, 0.5)'
+                  ? '0 0 10px rgba(61, 142, 247, 0.3)'
                   : 'none',
               }}>
               <svg

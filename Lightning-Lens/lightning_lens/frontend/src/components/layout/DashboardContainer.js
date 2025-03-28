@@ -48,7 +48,7 @@ const DashboardContainer = ({ showPredictionsTab }) => {
             <div className='flex items-center mb-4'>
               <svg
                 xmlns='http://www.w3.org/2000/svg'
-                className='h-6 w-6 mr-2 text-lightning-purple'
+                className='h-6 w-6 mr-2 text-lightning-blue'
                 fill='none'
                 viewBox='0 0 24 24'
                 stroke='currentColor'>

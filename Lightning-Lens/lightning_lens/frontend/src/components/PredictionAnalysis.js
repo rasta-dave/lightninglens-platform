@@ -196,7 +196,7 @@ const PredictionAnalysis = ({ predictions }) => {
               Please wait while we retrieve and process the data...
             </p>
             <div className='relative w-64 h-3 bg-gray-700 rounded-full overflow-hidden'>
-              <div className='absolute top-0 left-0 h-full bg-blue-600 rounded-full animate-pulse-progress'></div>
+              <div className='absolute top-0 left-0 h-full bg-lightning-blue rounded-full animate-pulse-progress'></div>
             </div>
           </div>
         </div>
@@ -227,50 +227,50 @@ const PredictionAnalysis = ({ predictions }) => {
     <div className='bg-gray-800 rounded-lg shadow-md'>
       {/* Summary Metrics */}
       <div className='mb-6 grid grid-cols-1 md:grid-cols-4 gap-4'>
-        <div className='bg-blue-900/30 p-4 rounded-lg shadow border border-blue-800'>
-          <h3 className='text-lg font-semibold text-blue-300'>
+        <div className='bg-node-background p-4 rounded-lg shadow border border-lightning-blue/30'>
+          <h3 className='text-lg font-semibold text-satoshi-white'>
             Total Channels
           </h3>
-          <p className='text-3xl font-bold text-blue-200'>
+          <p className='text-3xl font-bold text-lightning-blue'>
             {metrics.totalChannels}
           </p>
-          <p className='text-sm text-blue-400'>Across {nodes.size} nodes</p>
+          <p className='text-sm text-gray-400'>Across {nodes.size} nodes</p>
         </div>
 
-        <div className='bg-red-900/30 p-4 rounded-lg shadow border border-red-800'>
-          <h3 className='text-lg font-semibold text-red-300'>
+        <div className='bg-node-background p-4 rounded-lg shadow border border-warning-red/30'>
+          <h3 className='text-lg font-semibold text-satoshi-white'>
             Critical Balance
           </h3>
-          <p className='text-3xl font-bold text-red-200'>
+          <p className='text-3xl font-bold text-warning-red'>
             {metrics.criticalChannels}
           </p>
-          <p className='text-sm text-red-400'>
+          <p className='text-sm text-gray-400'>
             {metrics.criticalPercent}% of channels need rebalancing
           </p>
         </div>
 
-        <div className='bg-green-900/30 p-4 rounded-lg shadow border border-green-800'>
-          <h3 className='text-lg font-semibold text-green-300'>
+        <div className='bg-node-background p-4 rounded-lg shadow border border-node-green/30'>
+          <h3 className='text-lg font-semibold text-satoshi-white'>
             Optimal Balance
           </h3>
-          <p className='text-3xl font-bold text-green-200'>
+          <p className='text-3xl font-bold text-node-green'>
             {metrics.optimalChannels}
           </p>
-          <p className='text-sm text-green-400'>
+          <p className='text-sm text-gray-400'>
             {metrics.optimalPercent}% of channels well-balanced
           </p>
         </div>
 
-        <div className='bg-purple-900/30 p-4 rounded-lg shadow border border-purple-800'>
-          <h3 className='text-lg font-semibold text-purple-300'>
+        <div className='bg-node-background p-4 rounded-lg shadow border border-lightning-blue/30'>
+          <h3 className='text-lg font-semibold text-satoshi-white'>
             Success Rate
           </h3>
-          <p className='text-3xl font-bold text-purple-200'>
+          <p className='text-3xl font-bold text-lightning-blue'>
             {predictions[0]?.success_rate
               ? `${parseFloat(predictions[0].success_rate) * 100}%`
               : 'N/A'}
           </p>
-          <p className='text-sm text-purple-400'>ML model confidence</p>
+          <p className='text-sm text-gray-400'>ML model confidence</p>
         </div>
       </div>
 
@@ -410,7 +410,7 @@ const PredictionAnalysis = ({ predictions }) => {
                     <div className='flex items-center'>
                       <div className='w-24 bg-gray-700 rounded-full h-2.5'>
                         <div
-                          className='bg-blue-600 h-2.5 rounded-full'
+                          className='bg-lightning-blue h-2.5 rounded-full'
                           style={{
                             width: `${
                               parseFloat(prediction.balance_ratio) * 100
@@ -429,7 +429,7 @@ const PredictionAnalysis = ({ predictions }) => {
                     <div className='flex items-center'>
                       <div className='w-24 bg-gray-700 rounded-full h-2.5'>
                         <div
-                          className='bg-green-600 h-2.5 rounded-full'
+                          className='bg-node-green h-2.5 rounded-full'
                           style={{
                             width: `${
                               parseFloat(prediction.optimal_ratio) * 100
@@ -448,9 +448,9 @@ const PredictionAnalysis = ({ predictions }) => {
                     <div
                       className={`text-sm font-medium ${
                         parseFloat(prediction.adjustment_needed) > 0
-                          ? 'text-red-400'
+                          ? 'text-warning-red'
                           : parseFloat(prediction.adjustment_needed) < 0
-                          ? 'text-blue-400'
+                          ? 'text-lightning-blue'
                           : 'text-gray-400'
                       }`}>
                       {parseFloat(prediction.adjustment_needed) > 0
@@ -473,10 +473,10 @@ const PredictionAnalysis = ({ predictions }) => {
                     <span
                       className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         channelStatus.status === 'optimal'
-                          ? 'bg-green-900 text-green-200'
+                          ? 'bg-node-green/20 text-node-green border border-node-green/30'
                           : channelStatus.status === 'acceptable'
-                          ? 'bg-yellow-900 text-yellow-200'
-                          : 'bg-red-900 text-red-200'
+                          ? 'bg-channel-yellow/20 text-channel-yellow border border-channel-yellow/30'
+                          : 'bg-warning-red/20 text-warning-red border border-warning-red/30'
                       }`}>
                       {channelStatus.status}
                     </span>
