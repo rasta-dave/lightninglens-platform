@@ -17,6 +17,9 @@ function useD3(renderFn, dependencies = []) {
   const previousDependencies = useRef([]);
   const renderTimerRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const isResizing = useRef(false);
+  const resizeTimeoutRef = useRef(null);
+  const lastDimensionsRef = useRef({ width: 0, height: 0 });
 
   // Store the render function in a ref to avoid it being included in dependencies
   const renderFnRef = useRef(renderFn);
@@ -25,15 +28,6 @@ function useD3(renderFn, dependencies = []) {
   useEffect(() => {
     renderFnRef.current = renderFn;
   }, [renderFn]);
-
-  // Debounce function to avoid too many renders in rapid succession
-  const debounce = (func, delay) => {
-    let timer;
-    return function (...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => func.apply(this, args), delay);
-    };
-  };
 
   // Function to clean up the SVG completely to prevent duplication
   const cleanupSVG = () => {
@@ -58,6 +52,32 @@ function useD3(renderFn, dependencies = []) {
     }
   };
 
+  // Function to update SVG dimensions only
+  const updateSVGDimensions = () => {
+    if (!containerRef.current || !svgRef.current) return;
+
+    try {
+      const newWidth = containerRef.current.clientWidth;
+      // Use the explicit height from the container
+      const newHeight = containerRef.current.clientHeight || 350;
+
+      // Only update if dimensions have changed significantly
+      if (
+        Math.abs(newWidth - lastDimensionsRef.current.width) > 5 ||
+        Math.abs(newHeight - lastDimensionsRef.current.height) > 5
+      ) {
+        svgRef.current
+          .attr('width', newWidth)
+          .attr('height', newHeight)
+          .attr('viewBox', [0, 0, newWidth, newHeight]);
+
+        lastDimensionsRef.current = { width: newWidth, height: newHeight };
+      }
+    } catch (e) {
+      console.error('Error updating SVG dimensions:', e);
+    }
+  };
+
   // Function to perform the actual rendering
   const performRender = () => {
     // Skip if container ref isn't available
@@ -66,145 +86,118 @@ function useD3(renderFn, dependencies = []) {
     // Clean up any existing SVG elements
     cleanupSVG();
 
-    // Always create a new SVG element
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight || 350;
+    try {
+      // Always create a new SVG element
+      const width = containerRef.current.clientWidth;
+      // Use the explicit height from the container
+      const height = containerRef.current.clientHeight || 350;
 
-    // Use requestAnimationFrame for smoother rendering
-    requestAnimationFrame(() => {
+      lastDimensionsRef.current = { width, height };
+
+      // Create SVG with appropriate attributes
+      svgRef.current = d3
+        .select(containerRef.current)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height])
+        .style('display', 'block'); // Prevent vertical stretching
+
+      // Call the render function using the ref
       try {
-        // Apply will-change to hint browser about upcoming animations
-        d3.select(containerRef.current)
-          .style('will-change', 'transform')
-          .style('transform', 'translateZ(0)'); // Force GPU acceleration
+        const cleanupFn = renderFnRef.current(containerRef, svgRef.current);
 
-        // Create SVG with hardware acceleration hints
-        svgRef.current = d3
-          .select(containerRef.current)
-          .append('svg')
-          .attr('width', width)
-          .attr('height', height)
-          .attr('viewBox', [0, 0, width, height])
-          .style('transform', 'translate3d(0,0,0)')
-          .style('backface-visibility', 'hidden')
-          .style('will-change', 'transform')
-          .style('transform-style', 'preserve-3d');
-
-        // If there's an existing resize observer, disconnect it
-        if (resizeObserverRef.current) {
-          resizeObserverRef.current.disconnect();
+        // Store cleanup function for later
+        if (typeof cleanupFn === 'function') {
+          cleanupFnRef.current = cleanupFn;
         }
-
-        // Create a resize observer to handle window resizing efficiently
-        resizeObserverRef.current = new ResizeObserver(
-          debounce(() => {
-            if (containerRef.current && svgRef.current) {
-              const newWidth = containerRef.current.clientWidth;
-              const newHeight = containerRef.current.clientHeight || 350;
-
-              svgRef.current
-                .attr('width', newWidth)
-                .attr('height', newHeight)
-                .attr('viewBox', [0, 0, newWidth, newHeight]);
-
-              // Clean up and re-render
-              if (cleanupFnRef.current) {
-                try {
-                  cleanupFnRef.current();
-                } catch (e) {
-                  console.error('Error in resize cleanup function:', e);
-                }
-                cleanupFnRef.current = null;
-              }
-
-              try {
-                const cleanupFn = renderFnRef.current(
-                  containerRef,
-                  svgRef.current
-                );
-                if (typeof cleanupFn === 'function') {
-                  cleanupFnRef.current = cleanupFn;
-                }
-              } catch (e) {
-                console.error('Error in resize render function:', e);
-              }
-            }
-          }, 150)
-        );
-
-        resizeObserverRef.current.observe(containerRef.current);
-
-        // Call the render function using the ref
-        try {
-          const cleanupFn = renderFnRef.current(containerRef, svgRef.current);
-
-          // Store cleanup function for later
-          if (typeof cleanupFn === 'function') {
-            cleanupFnRef.current = cleanupFn;
-          }
-        } catch (e) {
-          console.error('Error in render function:', e);
-        }
-
-        // Remove acceleration hints after rendering is complete
-        setTimeout(() => {
-          if (containerRef.current) {
-            d3.select(containerRef.current).style('will-change', 'auto');
-          }
-        }, 1000);
       } catch (e) {
-        console.error('Error setting up SVG:', e);
+        console.error('Error in render function:', e);
+
+        // Display error message in container
+        if (svgRef.current) {
+          svgRef.current
+            .append('text')
+            .attr('x', width / 2)
+            .attr('y', height / 2)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'red')
+            .text('Error rendering visualization');
+        }
       }
-    });
+    } catch (e) {
+      console.error('Error setting up SVG:', e);
+    }
   };
 
+  // Create and manage the ResizeObserver more safely
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const handleResize = () => {
+      // Clear any existing timeout
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+
+      // Use a timeout to debounce and avoid too many resize events
+      resizeTimeoutRef.current = setTimeout(() => {
+        if (isResizing.current) return;
+        isResizing.current = true;
+
+        try {
+          if (svgRef.current) {
+            updateSVGDimensions();
+          } else {
+            performRender();
+          }
+        } catch (error) {
+          console.error('Error handling resize:', error);
+        } finally {
+          isResizing.current = false;
+        }
+      }, 100);
+    };
+
+    // Use a more controlled approach instead of direct ResizeObserver use
+    // This helps prevent the "loop completed with undelivered notifications" error
+    window.addEventListener('resize', handleResize);
+
+    // Initial render
+    performRender();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Handle dependency changes
   useEffect(() => {
     // Skip if refs aren't available
     if (!containerRef.current) return;
 
-    // Check if dependencies have actually changed to avoid unnecessary re-renders
-    let shouldUpdate = isInitialRender.current;
+    // Run on initial render or when dependencies change
+    const shouldUpdate =
+      isInitialRender.current ||
+      dependencies.length !== previousDependencies.current.length ||
+      dependencies.some((dep, i) => dep !== previousDependencies.current[i]);
 
-    if (
-      !shouldUpdate &&
-      dependencies.length === previousDependencies.current.length
-    ) {
-      for (let i = 0; i < dependencies.length; i++) {
-        if (dependencies[i] !== previousDependencies.current[i]) {
-          shouldUpdate = true;
-          break;
-        }
+    if (shouldUpdate) {
+      // Update previous dependencies
+      previousDependencies.current = [...dependencies];
+      isInitialRender.current = false;
+
+      // Clear any pending render
+      if (renderTimerRef.current) {
+        clearTimeout(renderTimerRef.current);
       }
+
+      // Render after a small delay to batch multiple rapid changes
+      renderTimerRef.current = setTimeout(performRender, 10);
     }
-
-    // Force update if visualizationKey dependency changed
-    const hasKeyDependency = dependencies.some(
-      (dep) =>
-        typeof dep === 'number' &&
-        previousDependencies.current.some(
-          (prev) => typeof prev === 'number' && prev !== dep
-        )
-    );
-
-    if (hasKeyDependency) {
-      shouldUpdate = true;
-    }
-
-    if (!shouldUpdate) {
-      return;
-    }
-
-    // Update previous dependencies
-    previousDependencies.current = [...dependencies];
-    isInitialRender.current = false;
-
-    // Clear any pending render
-    if (renderTimerRef.current) {
-      clearTimeout(renderTimerRef.current);
-    }
-
-    // Delay the rendering slightly to batch operations
-    renderTimerRef.current = setTimeout(performRender, 10);
 
     // Cleanup when component unmounts or dependencies change
     return () => {
@@ -220,12 +213,24 @@ function useD3(renderFn, dependencies = []) {
       if (renderTimerRef.current) {
         clearTimeout(renderTimerRef.current);
       }
-
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-      }
     };
   }, [...dependencies]);
+
+  // Clean up everything when component unmounts
+  useEffect(() => {
+    return () => {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+
+      cleanupSVG();
+    };
+  }, []);
 
   return { containerRef, svgRef };
 }
