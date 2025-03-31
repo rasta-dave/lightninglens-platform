@@ -10,8 +10,8 @@ A research project for optimizing Lightning Network liquidity through machine le
 
 Lightning Lens Platform combines two components:
 
-- **Lightning Network Simulation**: A Docker-based testnet simulation environment
-- **Lightning Lens AI Analysis**: Machine learning tools for channel optimization
+- **[Lightning Lens Simulation](https://github.com/rasta-dave/lightning-lens-simulation)**: A Docker-based testnet simulation environment
+- **[Lightning Lens](https://github.com/rasta-dave/lightning-lens)**: Machine learning tools for channel optimization
 
 The platform automatically collects transaction data, analyzes network patterns, and provides intelligent rebalancing suggestions to optimize liquidity distribution across channels.
 
