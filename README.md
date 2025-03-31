@@ -24,17 +24,27 @@ This project provides real-time monitoring, route optimization, and network visu
 #### Network Health Overview
 
 ![Network Health Dashboard](images/screenshots/screenshot1.png)
-_The main dashboard provides key network health metrics including active nodes, channels, transaction success rate, and time series analysis of transaction values. Real-time monitoring allows operators to quickly identify network performance trends._
+_The dashboard showcases key network metrics providing an at-a-glance view of active nodes, channels, transaction volume, and success rates._
 
-#### Route Recommendations
+#### Channel Balance Analysis
 
-![Route Recommendations](images/screenshots/screenshot2.png)
-_Machine learning route recommendations suggest optimal payment paths between nodes with calculated amounts. This helps node operators maximize transaction success rates while minimizing fees, improving overall network efficiency._
+![Channel Balance Analysis](images/screenshots/screenshot2.png)
+_The channel balance visualization displays the distribution of funds across Lightning Network channels, helping operators identify imbalances that could affect payment routing. The intuitive color coding highlights channels that require attention for optimal performance._
 
-#### Network Visualization & Transaction Flow
+#### Network Topology Visualization
 
-![Network Visualization](images/screenshots/screenshot3.png)
-_Interactive network topology visualization shows node relationships and transaction flows. The transaction flow analysis highlights the most active payment channels, providing insights into network utilization patterns._
+![Network Topology](images/screenshots/screenshot3.png)
+_The interactive network graph visualizes node connections and channel relationships with real-time animations of transaction flows. Node clustering and edge filtering capabilities allow operators to focus on specific network segments for detailed analysis._
+
+#### ML Analytics Dashboard
+
+![ML Analytics Dashboard](images/screenshots/screenshot5.png)
+_The machine learning analytics section provides predictive insights into channel performance with advanced metrics on optimal balancing ratios. The AI-powered recommendations help operators make data-driven decisions to maximize routing efficiency and transaction success rates._
+
+#### Transaction Flow Analysis
+
+![Transaction Flow Analysis](images/screenshots/screenshot4.png)
+_The Sankey diagram visualizes payment flows through the network, highlighting key routing paths and bottlenecks. The accompanying transaction table provides detailed information about each payment, enabling operators to trace and analyze specific network events._
 
 ## System Architecture
 
@@ -96,12 +106,6 @@ If you prefer to set up manually:
 pip install -r requirements.txt
 ```
 
-2. Set up the PYTHONPATH:
-
-```bash
-export PYTHONPATH=$PYTHONPATH:/path/to/LIGHTNING-LENS:/path/to/LIGHTNING-LENS/Lightning-Lens/lightning_lens
-```
-
 ### Docker Requirements
 
 The Lightning Network simulation requires Docker and Docker Compose:
@@ -115,18 +119,6 @@ sudo apt-get install docker.io docker-compose
 docker --version
 docker-compose --version
 ```
-
-# //////////////////////////////////////////////////////////////////////////////
-
-# //////////////////////////////////////////////////////////////////////////////
-
-# //////////////////////////////////////////////////////////////////////////////
-
-# //////////////////////////////////////////////////////////////////////////////
-
-# //////////////////////////////////////////////////////////////////////////////
-
-# //////////////////////////////////////////////////////////////////////////////
 
 ## Workflow
 
@@ -149,66 +141,16 @@ start_simulation.sh
 ./start.sh
 ```
 
----
-
----
-
----
-
-1.
-
-# Pruning old containers and restarts everything from scratch
-
-# Takes approx. 5 min
-
-./setup-nodes-continue.sh
-
-2.  ./start.sh
-
-npm run
-
-3.
-
-# THIS
-
-./start-simple-dashboard.sh
-
-## ./start_simulation.sh
-
----
-
-## ./start-dashboard.sh
-
 # Start data processing pipeline
 
 ./process_data.sh
 
-# What this does:
+## What this does:
 
-# Convert the raw JSON data to CSV
-
-# Transform the transaction data
-
-# Generate features from the transformed data
-
-# Train the initial model
-
-# Report the path to your newly trained model
-
-#Frontend display
-./setup_dependencies.sh
-
-./start_proxy.sh
-
-npm start
-
-```
-
-## Todo
-
-- Introduce more nodes into the lightning simulation
-- Create more randomness
-- Introduce more strategies and fail-scenariosfor the ML to improve upon
+- Convert the raw JSON data to CSV
+- Transform the transaction data
+- Generate features from the transformed data
+- Train the initial model
 
 ## Services and Ports
 
@@ -222,10 +164,12 @@ The Lightning Lens platform consists of several interconnected services:
 | Adapter Proxy        | 8001 | Transforms data between systems            |
 | WebSocket Client     | 8766 | Receives data from the simulation          |
 | Suggestions Service  | 8767 | Provides rebalancing suggestions           |
-| CORS Proxy           | 3003 | Handles CORS and API routing               |
-| Frontend             | 3000 | React dashboard UI                         |
+| CORS Proxy           | 3003 | Handles CORS                               |
 
 ## License
 
 This project is licensed under the MIT License.
+
+```
+
 ```
