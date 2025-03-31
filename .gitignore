@@ -7,7 +7,6 @@
 /WORKLOG_*.md
 WORKLOG_*.md
 /rules.txt
-images/
 
 # Python
 __pycache__/
